@@ -1705,7 +1705,8 @@ async function serveStatic(req, res, pathname) {
 }
 
 const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, 'http://localhost');
+  // « //riot.txt » serait lu comme un nom d'hôte : on fusionne les barres obliques en tête.
+  const url = new URL(req.url.replace(/^\/+/, '/'), 'http://localhost');
   if (url.pathname.startsWith('/api/')) {
     const r = routes.find((x) => x.method === req.method && x.re.test(url.pathname));
     if (!r) return sendJson(req, res, 404, { error: 'Route inconnue.' });

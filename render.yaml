@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: cupcake-gg
+    runtime: node
+    plan: starter
+    buildCommand: echo "aucune dépendance"
+    startCommand: node server.js
+    healthCheckPath: /api/config
+    envVars:
+      - key: RIOT_API_KEY
+        sync: false
+      - key: DEFAULT_PLATFORM
+        value: euw1
+      - key: DATA_DIR
+        value: /var/data
+      - key: AUTO_META_HOURS
+        value: "6"
+      - key: AUTO_META_GAMES
+        value: "100"
+    disk:
+      name: cupcake-data
+      mountPath: /var/data
+      sizeGB: 1

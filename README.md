@@ -93,3 +93,17 @@ data/                cache Data Dragon et échantillons de tier list (créé au 
 ## Mentions
 
 cupcake.gg n'est pas approuvé par Riot Games et ne reflète pas les opinions de Riot Games ni de quiconque officiellement impliqué dans la production ou la gestion des propriétés de Riot Games. Riot Games et toutes les propriétés associées sont des marques commerciales ou des marques déposées de Riot Games, Inc.
+
+
+## Héberger gratuitement : Render + Cloudflare R2
+
+Render gratuit efface le disque à chaque redémarrage. Avec R2, le serveur sauvegarde `data/` sur Cloudflare (10 Go gratuits) et le restaure au démarrage.
+
+Variables à définir sur Render : `RIOT_API_KEY`, `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` (et facultatif `R2_PREFIX`, défaut `cupcake/`).
+
+## Maquette sur Render gratuit (sans stockage externe)
+
+1. En local, lance `node server.js` puis « Analyser 150 parties » (ou 400) dans la tier list.
+2. Copie `data/meta2-euw1.json` (et `data/pros.json` si tu suis des pros) dans le dossier `seed/`.
+3. Envoie le projet sur GitHub (le dossier `seed/` est inclus, `data/` et `.env` non).
+4. Sur Render, les données de `seed/` sont chargées à chaque démarrage : la tier list et les builds sont visibles tout de suite.

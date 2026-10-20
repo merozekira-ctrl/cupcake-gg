@@ -1,0 +1,2 @@
+Mets ici les fichiers meta2-*.json copiés depuis data/ après une analyse locale.
+Au démarrage, le serveur les copie dans data/ s il n y en a pas.

@@ -2,7 +2,7 @@ services:
   - type: web
     name: cupcake-gg
     runtime: node
-    plan: starter
+    plan: free
     buildCommand: echo "aucune dépendance"
     startCommand: node server.js
     healthCheckPath: /api/config
@@ -11,13 +11,9 @@ services:
         sync: false
       - key: DEFAULT_PLATFORM
         value: euw1
-      - key: DATA_DIR
-        value: /var/data
+      - key: DEMO
+        value: "1"
       - key: AUTO_META_HOURS
         value: "6"
       - key: AUTO_META_GAMES
-        value: "100"
-    disk:
-      name: cupcake-data
-      mountPath: /var/data
-      sizeGB: 1
+        value: "50"

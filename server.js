@@ -13,6 +13,7 @@ const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
 const zlib = require('zlib');
+const crypto = require('crypto');
 
 if (typeof fetch !== 'function') {
   console.error('cupcake.gg a besoin de Node.js 18 ou plus récent (fetch natif).');
@@ -1180,6 +1181,7 @@ async function writeJson(file, data) {
   const tmp = file + '.tmp';
   await fsp.writeFile(tmp, JSON.stringify(data));
   await fsp.rename(tmp, file);
+  remoteSave(file);
 }
 
 const metaCache = {};
@@ -1560,7 +1562,7 @@ const routes = [];
 const route = (method, re, fn) => routes.push({ method, re, fn });
 const P = '([a-z0-9]+)';
 
-route('GET', /^\/api\/config$/, () => ({ platforms: PLATFORMS, hasKey: !!KEY, defaultPlatform: PLATFORMS[DEFAULT_PLATFORM] ? DEFAULT_PLATFORM : 'euw1' }));
+route('GET', /^\/api\/config$/, () => ({ platforms: PLATFORMS, hasKey: !!KEY, demo: process.env.DEMO === '1', defaultPlatform: PLATFORMS[DEFAULT_PLATFORM] ? DEFAULT_PLATFORM : 'euw1' }));
 route('GET', /^\/api\/static$/, () => getStatic());
 route('GET', /^\/api\/champion\/([A-Za-z0-9]+)$/, (m) => getChampion(m[1]));
 route('GET', new RegExp(`^/api/summoner/${P}/([^/]+)/([^/]+)$`), (m, q) => getSummoner(plat(m[1]), dec(m[2]), dec(m[3]), q.force === '1'));
@@ -1583,6 +1585,7 @@ route('GET', /^\/api\/augments$/, () => getAugments());
 route('POST', new RegExp(`^/api/meta/${P}/start$`), (m, q) => {
   const p = plat(m[1]);
   if (!KEY) throw new ApiError(500, 'Aucune clé API : ajoute RIOT_API_KEY=... dans le fichier .env puis relance le serveur.');
+  if (process.env.DEMO === '1') throw new ApiError(403, 'Analyse désactivée sur la version de démonstration.');
   startMeta(p, clampInt(q.target, 20, 2000, 150), modeOf(q.mode));
   return metaSummary(p, modeOf(q.mode));
 });
@@ -1747,7 +1750,7 @@ function scheduleAutoMeta() {
     .split(',')
     .map((x) => x.trim())
     .filter((x) => MODES[x]);
-  if (!KEY || !hours || !plats.length) return;
+  if (!KEY || !hours || !plats.length || process.env.DEMO === '1') return;
   // Un seul job à la fois pour ne pas épuiser la limite de la clé.
   const queue = [];
   const run = () => {
@@ -1766,6 +1769,131 @@ function scheduleAutoMeta() {
   console.log(`  Analyse auto : ${games} parties toutes les ${hours} h (${plats.join(', ')} ; ${modes.join(', ')}).`);
 }
 
+/* ------------------------------------------------------------------ */
+/* Sauvegarde distante sur Cloudflare R2 (API S3, signature AWS v4)    */
+/* Pour les hébergeurs sans disque persistant (Render gratuit…).       */
+/* ------------------------------------------------------------------ */
+
+const R2 = {
+  account: process.env.R2_ACCOUNT_ID || '',
+  key: process.env.R2_ACCESS_KEY_ID || '',
+  secret: process.env.R2_SECRET_ACCESS_KEY || '',
+  bucket: process.env.R2_BUCKET || '',
+  prefix: (process.env.R2_PREFIX || 'cupcake/').replace(/^\/+/, ''),
+};
+const r2On = () => !!(R2.account && R2.key && R2.secret && R2.bucket);
+const hmac = (k, d) => crypto.createHmac('sha256', k).update(d).digest();
+const sha = (d) => crypto.createHash('sha256').update(d).digest('hex');
+const rfc3986 = (s) => encodeURIComponent(s).replace(/[!'()*]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase());
+
+async function r2(method, key = '', body = null, query = {}) {
+  const host = `${R2.account}.r2.cloudflarestorage.com`;
+  const pathName = '/' + [R2.bucket, ...key.split('/').filter(Boolean)].map(rfc3986).join('/');
+  const qs = Object.keys(query)
+    .sort()
+    .map((k) => `${rfc3986(k)}=${rfc3986(query[k])}`)
+    .join('&');
+  const now = new Date();
+  const amz = now.toISOString().replace(/[-:]|\.\d{3}/g, '');
+  const day = amz.slice(0, 8);
+  const payload = sha(body || '');
+  const headers = { host, 'x-amz-content-sha256': payload, 'x-amz-date': amz };
+  const signed = Object.keys(headers).sort();
+  const canon = [method, pathName, qs, signed.map((h) => `${h}:${headers[h]}\n`).join(''), signed.join(';'), payload].join('\n');
+  const scope = `${day}/auto/s3/aws4_request`;
+  const toSign = ['AWS4-HMAC-SHA256', amz, scope, sha(canon)].join('\n');
+  const kSign = hmac(hmac(hmac(hmac('AWS4' + R2.secret, day), 'auto'), 's3'), 'aws4_request');
+  const sig = crypto.createHmac('sha256', kSign).update(toSign).digest('hex');
+  headers.authorization = `AWS4-HMAC-SHA256 Credential=${R2.key}/${scope}, SignedHeaders=${signed.join(';')}, Signature=${sig}`;
+  delete headers.host;
+  const res = await fetch(`https://${host}${pathName}${qs ? '?' + qs : ''}`, { method, headers, body: body || undefined, signal: AbortSignal.timeout(30000) });
+  if (!res.ok && res.status !== 404) throw new Error(`R2 ${method} ${key} : HTTP ${res.status} ${(await res.text()).slice(0, 200)}`);
+  return res;
+}
+
+const pendingUploads = new Map();
+function remoteSave(file) {
+  if (!r2On() || !file.startsWith(DATA_DIR)) return;
+  clearTimeout(pendingUploads.get(file));
+  // Regroupe les écritures rapprochées : un envoi au plus toutes les 20 s par fichier.
+  pendingUploads.set(file, setTimeout(() => uploadFile(file), 20000));
+}
+async function uploadFile(file) {
+  pendingUploads.delete(file);
+  try {
+    const body = await fsp.readFile(file);
+    await r2('PUT', R2.prefix + path.relative(DATA_DIR, file).split(path.sep).join('/'), body);
+  } catch (e) {
+    console.warn(`  Sauvegarde R2 : ${e.message}`);
+  }
+}
+async function flushUploads() {
+  const files = [...pendingUploads.keys()];
+  files.forEach((f) => clearTimeout(pendingUploads.get(f)));
+  await Promise.all(files.map(uploadFile));
+}
+
+async function restoreFromR2() {
+  if (!r2On()) return;
+  let n = 0;
+  let token = null;
+  try {
+    do {
+      const q = { 'list-type': '2', prefix: R2.prefix };
+      if (token) q['continuation-token'] = token;
+      const xml = await (await r2('GET', '', null, q)).text();
+      const keys = [...xml.matchAll(/<Key>([^<]+)<\/Key>/g)].map((m) => m[1].replace(/&amp;/g, '&'));
+      for (const k of keys) {
+        const rel = k.slice(R2.prefix.length);
+        if (!rel || rel.includes('..')) continue;
+        const res = await r2('GET', k);
+        if (!res.ok) continue;
+        const dest = path.join(DATA_DIR, rel);
+        await fsp.mkdir(path.dirname(dest), { recursive: true });
+        await fsp.writeFile(dest, Buffer.from(await res.arrayBuffer()));
+        n++;
+      }
+      token = /<IsTruncated>true<\/IsTruncated>/.test(xml) ? (xml.match(/<NextContinuationToken>([^<]+)</) || [])[1] : null;
+    } while (token);
+    console.log(`  Données restaurées depuis Cloudflare R2 : ${n} fichier(s).`);
+  } catch (e) {
+    console.warn(`  Restauration R2 impossible : ${e.message}`);
+  }
+}
+
+for (const sig of ['SIGTERM', 'SIGINT']) {
+  process.on(sig, async () => {
+    if (pendingUploads.size) {
+      console.log('  Envoi des dernières données vers R2…');
+      await flushUploads().catch(() => {});
+    }
+    process.exit(0);
+  });
+}
+
+// Données de départ versionnées dans seed/ (copiées si data/ est vide, ex. Render gratuit).
+async function restoreSeed() {
+  const seed = path.join(__dirname, 'seed');
+  let files = [];
+  try {
+    files = (await fsp.readdir(seed)).filter((f) => f.endsWith('.json'));
+  } catch {
+    return;
+  }
+  await fsp.mkdir(DATA_DIR, { recursive: true });
+  let n = 0;
+  for (const f of files) {
+    const dest = path.join(DATA_DIR, f);
+    if (await fsp.stat(dest).then(() => true, () => false)) continue;
+    await fsp.copyFile(path.join(seed, f), dest);
+    n++;
+  }
+  if (n) console.log(`  Données de départ chargées depuis seed/ : ${n} fichier(s).`);
+}
+
+(async () => {
+await restoreFromR2();
+await restoreSeed();
 server.listen(PORT, HOST, async () => {
   console.log(`\n  cupcake.gg prêt : http://localhost:${PORT}\n`);
   if (!KEY) {
@@ -1784,5 +1912,7 @@ server.listen(PORT, HOST, async () => {
     console.warn(`  Clé API Riot : ${e.message}\n`);
   }
   getStatic().catch((e) => console.warn(`  Data Dragon : ${e.message}`));
+  if (r2On()) console.log(`  Sauvegarde Cloudflare R2 active (bucket ${R2.bucket}).`);
   scheduleAutoMeta();
 });
+})();

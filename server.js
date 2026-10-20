@@ -35,6 +35,8 @@ const RIOT_BASE = (process.env.RIOT_BASE || '').replace(/\/$/, '');
 const DDRAGON = (process.env.DDRAGON_BASE || 'https://ddragon.leagueoflegends.com').replace(/\/$/, '');
 const PUBLIC_DIR = path.join(__dirname, 'public');
 // Début de la saison en cours (patch 26.1, 8 janvier 2026). Modifiable dans .env : SEASON_START=AAAA-MM-JJ
+// Version de démonstration (message + analyses bloquées) : active par défaut, DEMO=0 dans .env pour la couper.
+const DEMO_ON = process.env.DEMO !== '0';
 const SEASON_START = process.env.SEASON_START || '2026-01-08';
 // DATA_DIR : dossier des données persistantes (sur Render, le chemin du disque, ex. /var/data).
 const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(__dirname, 'data');
@@ -1562,7 +1564,7 @@ const routes = [];
 const route = (method, re, fn) => routes.push({ method, re, fn });
 const P = '([a-z0-9]+)';
 
-route('GET', /^\/api\/config$/, () => ({ platforms: PLATFORMS, hasKey: !!KEY, demo: process.env.DEMO === '1', defaultPlatform: PLATFORMS[DEFAULT_PLATFORM] ? DEFAULT_PLATFORM : 'euw1' }));
+route('GET', /^\/api\/config$/, () => ({ platforms: PLATFORMS, hasKey: !!KEY, demo: DEMO_ON, defaultPlatform: PLATFORMS[DEFAULT_PLATFORM] ? DEFAULT_PLATFORM : 'euw1' }));
 route('GET', /^\/api\/static$/, () => getStatic());
 route('GET', /^\/api\/champion\/([A-Za-z0-9]+)$/, (m) => getChampion(m[1]));
 route('GET', new RegExp(`^/api/summoner/${P}/([^/]+)/([^/]+)$`), (m, q) => getSummoner(plat(m[1]), dec(m[2]), dec(m[3]), q.force === '1'));
@@ -1585,7 +1587,7 @@ route('GET', /^\/api\/augments$/, () => getAugments());
 route('POST', new RegExp(`^/api/meta/${P}/start$`), (m, q) => {
   const p = plat(m[1]);
   if (!KEY) throw new ApiError(500, 'Aucune clé API : ajoute RIOT_API_KEY=... dans le fichier .env puis relance le serveur.');
-  if (process.env.DEMO === '1') throw new ApiError(403, 'Analyse désactivée sur la version de démonstration.');
+  if (DEMO_ON) throw new ApiError(403, 'Analyse désactivée sur la version de démonstration.');
   startMeta(p, clampInt(q.target, 20, 2000, 150), modeOf(q.mode));
   return metaSummary(p, modeOf(q.mode));
 });
@@ -1751,7 +1753,7 @@ function scheduleAutoMeta() {
     .split(',')
     .map((x) => x.trim())
     .filter((x) => MODES[x]);
-  if (!KEY || !hours || !plats.length || process.env.DEMO === '1') return;
+  if (!KEY || !hours || !plats.length || DEMO_ON) return;
   // Un seul job à la fois pour ne pas épuiser la limite de la clé.
   const queue = [];
   const run = () => {

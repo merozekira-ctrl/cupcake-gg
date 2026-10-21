@@ -565,7 +565,66 @@ function drawMastery(body, st, all = false) {
   body.querySelector('#allMastery')?.addEventListener('click', () => drawMastery(body, st, true));
 }
 
-/* ---------- Onglet Partie en direct ---------- */
+/* ---------- Onglet Partie en direct (cartes par joueur, façon tracker) ---------- */
+
+const ROLE_SHORT = { TOP: 'Haut', JUNGLE: 'Jungle', MIDDLE: 'Milieu', BOTTOM: 'Tireur', UTILITY: 'Support' };
+
+function liveCard(p, s, g) {
+  const r = p.ranked?.solo;
+  const n = r ? r.w + r.l : 0;
+  const ch = champOf(p.champ);
+  const name = p.tag ? `<a href="${playerHref(s.platform, p.name, p.tag)}">${esc(p.name)}<span>#${esc(p.tag)}</span></a>` : `<span>${esc(p.name)}</span>`;
+  const duo = p.duo ? `<span class="lc-duo" data-duo="${p.duo}" title="${esc('Joue avec ' + (p.with || []).map((w) => w.name).join(', '))}"><svg viewBox="0 0 20 20" width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="3" fill="currentColor"/><circle cx="14" cy="8" r="2.5" fill="currentColor"/><path d="M1.5 17c0-3.3 2.5-5.5 5.5-5.5s5.5 2.2 5.5 5.5M12 12.2c3 0 6.5 1.6 6.5 4.8" fill="none" stroke="currentColor" stroke-width="2"/></svg>${p.duo}</span>` : '';
+  return `<article class="lc ${p.team === 100 ? 'blue' : 'red'}${p.puuid === s.puuid ? ' me' : ''}" data-puuid="${esc(p.puuid || '')}">
+    <header class="lc-head">${duo}${name}</header>
+    <section class="lc-row lc-champ">
+      <a class="lc-portrait" href="${ch ? champHref(ch, p.role) : '#/champions'}" title="Builds de ${esc(ch?.name || '')}">${champImg(p.champ, 52)}<b class="lc-mlvl" data-slot="mlvl"></b></a>
+      <div class="lc-txt" data-slot="champ"><span class="skel stat-skel" style="width:90px"></span><span class="skel stat-skel" style="width:70px;margin-top:6px"></span></div>
+      <div class="lc-spells">${spellImg(p.s1, 20)}${spellImg(p.s2, 20)}${runeImg(p.ks, 20)}${runeImg(p.ss, 16, true)}</div>
+    </section>
+    <section class="lc-row lc-rank">
+      ${crest(r || null, 'md')}
+      <div class="lc-txt">
+        <b>${r ? `${rankText(r)} <span class="muted">${num(r.lp)} LP</span>` : 'Non classé'}</b>
+        <small>Solo/Duo</small>
+        ${r ? `<small><span class="${r.w / n >= 0.5 ? 'good' : 'bad'}">${pct(r.w, n)} win</span> (${num(n)} parties)</small>` : ''}
+      </div>
+    </section>
+    <section class="lc-row lc-role">
+      <span class="lc-role-ic">${p.role ? roleIcon(p.role) : ''}</span>
+      <div class="lc-txt"><b>${esc(ROLE_SHORT[p.role] || 'Rôle inconnu')} <span class="muted">(en cours)</span></b><small data-slot="mains">Rôles principaux : …</small></div>
+    </section>
+    <section class="lc-row lc-activity" data-slot="activity">
+      <div><b class="lc-big">12<sup>H</sup></b><small><span class="skel stat-skel"></span></small></div>
+      <div><b class="lc-big">30<sup>J</sup></b><small><span class="skel stat-skel"></span></small></div>
+    </section>
+    <section class="lc-form" data-slot="form"></section>
+    <footer class="lc-tags" data-slot="tags"><span class="skel" style="width:80px;height:22px;border-radius:6px"></span><span class="skel" style="width:110px;height:22px;border-radius:6px"></span></footer>
+  </article>`;
+}
+
+function fillCard(card, p, d) {
+  const m = d.mastery;
+  card.querySelector('[data-slot="mlvl"]').textContent = m.lvl ? m.lvl : '';
+  const c = d.champ;
+  const wr = c.n ? Math.round((c.w / c.n) * 100) : null;
+  card.querySelector('[data-slot="champ"]').innerHTML = c.n
+    ? `<b><span class="${wr >= 50 ? 'good' : 'bad'}">${wr}% win</span> <span class="muted">(${c.n} jouée${c.n > 1 ? 's' : ''})</span></b>
+       <small class="lc-kda"><span class="good">${dec(c.k, 1)}</span> / <span class="bad">${dec(c.d, 1)}</span> / <span class="mid">${dec(c.a, 1)}</span></small>
+       <small class="muted">${num(m.pts)} pts de maîtrise</small>`
+    : `<b>${m.pts ? `${num(m.pts)} pts` : 'Jamais joué'}</b><small class="muted">${m.pts ? 'de maîtrise' : 'Aucune maîtrise sur ce champion'}</small><small class="muted">Pas de partie classée récente dessus</small>`;
+  const mains = (d.mainRoles || []).map((r) => `<span class="${r === p.role ? '' : 'warn'}">${ROLE_SHORT[r]}</span>`).join(', ');
+  card.querySelector('[data-slot="mains"]').innerHTML = `Rôles principaux : ${mains || '–'}`;
+  card.querySelector('[data-slot="activity"]').innerHTML = `
+    <div title="Parties jouées ces 12 dernières heures (toutes files)"><b class="lc-big">12<sup>H</sup></b><small>${d.h12} jouée${d.h12 > 1 ? 's' : ''}</small></div>
+    <div title="Parties jouées ces 30 derniers jours (toutes files)"><b class="lc-big">30<sup>J</sup></b><small>${d.d30}${d.d30cap ? '+' : ''} jouée${d.d30 > 1 ? 's' : ''}</small></div>`;
+  card.querySelector('[data-slot="form"]').innerHTML = d.form.length
+    ? `<span class="muted small">Forme</span>${d.form.map((w) => `<i class="${w ? 'w' : 'l'}" title="${w ? 'Victoire' : 'Défaite'}"></i>`).join('')}`
+    : '';
+  card.querySelector('[data-slot="tags"]').innerHTML = d.tags.length
+    ? d.tags.map((t) => `<span class="lc-tag ${t.kind}" title="${esc(t.hint)}">${esc(t.label)}</span>`).join('')
+    : '<span class="muted small">Pas assez de parties récentes pour un profil.</span>';
+}
 
 async function drawLive(body, st, ctx, el) {
   clearInterval(liveTimer);
@@ -591,57 +650,52 @@ async function drawLive(body, st, ctx, el) {
     return;
   }
   const elapsed = () => (g.start ? (Date.now() - g.start) / 1000 : g.length + (Date.now() - g.at) / 1000);
+  const order = (a, b) => (ROLE_ORDER.indexOf(a.role) + 1 || 9) - (ROLE_ORDER.indexOf(b.role) + 1 || 9);
   const teams = [...new Set(g.parts.map((p) => p.team))].sort();
-  const anyRole = g.parts.some((p) => p.role);
-  const teamName = (t) => (t === 100 ? 'Équipe bleue' : t === 200 ? 'Équipe rouge' : `Équipe ${t}`);
+  const me = g.parts.find((p) => p.puuid === s.puuid);
+  const myChamp = me && champOf(me.champ);
   body.innerHTML = `
-    <div class="live-head">
-      <div><div class="muted small">${esc(queueName(g.q))}</div><div class="live-clock" id="liveClock" aria-live="off">${g.start ? clock(elapsed()) : 'Écran de chargement'}</div></div>
-      <button class="btn btn-sm" type="button" id="liveRefresh">Actualiser</button>
+    <div class="lv-head">
+      <div>
+        <h2 class="lv-title">${esc(queueName(g.q))} <span class="muted" id="liveClock">(${g.start ? clock(elapsed()) : 'chargement'})</span></h2>
+        <p class="muted small">Rôles déduits des champions et des sorts. Étiquettes et stats calculées sur les dernières parties classées de chaque joueur.</p>
+      </div>
+      <div class="lv-actions">
+        <div class="lv-bans">${teams
+          .map((t) => `<span class="lv-ban-team ${t === 100 ? 'blue' : 'red'}">${g.bans.filter((b) => b.team === t && b.c > 0).map((b) => champImg(b.c, 26)).join('')}</span>`)
+          .join('')}</div>
+        ${myChamp ? `<a class="btn btn-primary lv-build" href="${champHref(myChamp, me.role)}">Meilleurs builds pour ${champImg(me.champ, 24)} ${esc(myChamp.name)}</a>` : ''}
+        <button class="btn btn-sm" type="button" id="liveRefresh">Actualiser</button>
+      </div>
     </div>
-    ${anyRole ? '<p class="muted small" style="margin:-4px 0 12px">Riot ne fournit pas les rôles d’une partie en cours : ils sont déduits des champions, des sorts (Châtiment = jungle) et des statistiques du patch. Un duo = deux coéquipiers qui partagent au moins 2 de leurs 20 dernières parties.</p>' : ''}
     ${teams
-      .map((t) => {
-        const bans = g.bans.filter((b) => b.team === t && b.c > 0);
-        const parts = g.parts
-          .filter((p) => p.team === t)
-          .sort((a, b) => (ROLE_ORDER.indexOf(a.role) + 1 || 9) - (ROLE_ORDER.indexOf(b.role) + 1 || 9));
-        const duoGroups = [...new Set(parts.filter((p) => p.duo).map((p) => p.duo))];
-        return `<section class="panel live-team" aria-label="${teamName(t)}">
-          <div class="panel-title"><h2>${teamName(t)}</h2>${bans.length ? `<div class="row small muted">Bannis ${bans.map((b) => champImg(b.c, 22)).join('')}</div>` : ''}</div>
-          ${duoGroups.length ? `<div class="duo-sum">${duoGroups
-            .map((d) => {
-              const members = parts.filter((p) => p.duo === d);
-              const shared = Math.max(...members.flatMap((p) => (p.with || []).map((w) => w.shared)));
-              return `<span class="duo-chip" data-duo="${d}"><b>${members.length > 2 ? 'Groupe' : 'Duo'}</b>${members.map((p) => `${champImg(p.champ, 20)}<span>${esc(p.name)}</span>`).join('<i aria-hidden="true">+</i>')}<small>${shared} parties ensemble récemment</small></span>`;
-            })
-            .join('')}</div>` : ''}
-          <div class="scroll-x"><table class="table">
-            <thead><tr><th scope="col"><span class="sr">Rôle</span></th><th scope="col">Joueur</th><th scope="col">Rang Solo/Duo</th><th scope="col" class="num">Victoires</th><th scope="col">Sorts et runes</th></tr></thead>
-            <tbody>${parts
-              .map((p) => {
-                const r = p.ranked?.solo;
-                const n = r ? r.w + r.l : 0;
-                const ch = champOf(p.champ);
-                const duoTxt = p.with?.length ? `Duo avec ${p.with.map((w) => w.name).join(', ')}` : '';
-                return `<tr class="${p.puuid === s.puuid ? 'me' : ''}">
-                  <td class="role-cell">${p.role ? `<span title="${ROLES[p.role]} (déduit)">${roleIcon(p.role)}</span>` : ''}</td>
-                  <td><div class="cell-player">${champImg(p.champ, 36)}<div class="pn">${p.tag ? `<a href="${playerHref(s.platform, p.name, p.tag)}">${esc(p.name)}</a>` : `<span>${esc(p.name)}</span>`}<small>${esc(ch?.name || '')}</small></div>${p.duo ? `<span class="duo-tag" data-duo="${p.duo}" title="${esc(duoTxt)}">${esc(duoTxt.length > 28 ? 'Duo' : duoTxt)}</span>` : ''}</div></td>
-                  <td><div class="row">${crest(r || null, 'sm')}<span>${r ? `${rankText(r)} <span class="muted">${num(r.lp)} LP</span>` : '<span class="muted">Non classé</span>'}</span></div></td>
-                  <td class="num">${r ? `<b>${pct(r.w, n)}</b><br><span class="muted">${n} parties</span>` : '–'}</td>
-                  <td><div class="row" style="gap:3px">${spellImg(p.s1, 24)}${spellImg(p.s2, 24)}<span style="width:6px"></span>${runeImg(p.ks, 26)}${runeImg(p.ss, 22, true)}</div></td>
-                </tr>`;
-              })
-              .join('')}</tbody></table></div>
-        </section>`;
-      })
+      .map((t) => `<section class="lv-team" aria-label="${t === 100 ? 'Équipe bleue' : 'Équipe rouge'}">
+        <h3 class="lv-team-title ${t === 100 ? 'blue' : 'red'}">${t === 100 ? 'Équipe bleue' : 'Équipe rouge'}</h3>
+        <div class="lv-grid">${g.parts.filter((p) => p.team === t).sort(order).map((p) => liveCard(p, s, g)).join('')}</div>
+      </section>`)
       .join('')}`;
   body.querySelector('#liveRefresh').addEventListener('click', () => drawLive(body, st, ctx, el));
   if (g.start) {
     const clockEl = body.querySelector('#liveClock');
     liveTimer = setInterval(() => {
       if (!document.body.contains(clockEl)) return clearInterval(liveTimer);
-      clockEl.textContent = clock(elapsed());
+      clockEl.textContent = `(${clock(elapsed())})`;
     }, 1000);
   }
+  // Détails par joueur : le joueur suivi d'abord, puis les autres, deux à la fois.
+  const queue = [...g.parts].filter((p) => p.puuid).sort((a, b) => (b.puuid === s.puuid) - (a.puuid === s.puuid));
+  const worker = async () => {
+    while (queue.length && ctx.alive()) {
+      const p = queue.shift();
+      const card = body.querySelector(`.lc[data-puuid="${CSS.escape(p.puuid)}"]`);
+      try {
+        const d = await api(`/live-player/${s.platform}/${p.puuid}?champ=${p.champ}&role=${p.role || ''}`);
+        if (ctx.alive() && card) fillCard(card, p, d);
+      } catch {
+        if (card) card.querySelector('[data-slot="tags"]').innerHTML = '<span class="muted small">Stats indisponibles.</span>';
+      }
+    }
+  };
+  worker();
+  worker();
 }

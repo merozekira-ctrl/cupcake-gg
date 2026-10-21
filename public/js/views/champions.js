@@ -1,6 +1,6 @@
 // Tier list, liste des champions, fiche champion (builds haut niveau du patch, joueurs, compétences, skins).
 import {
-  S, api, esc, num, dec, pct, kdaText, kdaRatio, ago, champImg, champOf, champByKey, champHref, itemImg, spellImg,
+  S, api, esc, DEMO_NOTE, num, dec, pct, kdaText, kdaRatio, ago, champImg, champOf, champByKey, champHref, itemImg, spellImg,
   runeImg, abilityImg, passiveImg, splashUrl, loadingUrl, roleIcon, ROLES, ROLE_ORDER, CLASSES, rich, crest, rankText,
   regionOptions, setPlatform, setTitle, loading, errorState, store, toast, playerHref, norm,
 } from '../core.js';
@@ -232,6 +232,7 @@ function drawTier(body, ctx) {
       ? patches.map((x) => `<option value="${x}"${x === patch ? ' selected' : ''}>Patch ${x}${x === meta.current ? ' (actuel)' : ''}</option>`).join('')
       : '<option>Patch</option>';
     sample.innerHTML = sampleBoxHtml(meta, patch, region);
+    if (S.cfg.demo) sample.querySelectorAll('[data-start], #stopMeta').forEach((b) => b.remove());
     sample.querySelectorAll('[data-start]').forEach((b) => b.addEventListener('click', () => start(Number(b.dataset.start))));
     sample.querySelector('#stopMeta')?.addEventListener('click', async () => {
       try {
@@ -765,7 +766,10 @@ export async function renderChampion(el, { id }, ctx) {
     <div id="cBody"></div>`;
 
   const body = el.querySelector('#cBody');
-  const noData = () => `<div class="panel state">
+  const noData = () => S.cfg.demo && mode !== 'sr' ? `<div class="panel state demo-state">
+      <p class="state-title">${esc(MODE_LABEL[mode])} : bientôt disponible</p>
+      <p>${esc(DEMO_NOTE)}</p>
+    </div>` : `<div class="panel state">
       <p class="state-title">Pas encore de build pour ${esc(c.name)}</p>
       <p>${S.cfg.hasKey ? `${esc(c.name)} n’apparaît pas encore dans l’échantillon ${esc(MODE_LABEL[mode])} ${esc(S.cfg.platforms[p].label)} du patch actuel.${mode === 'sr' ? ' Lance une analyse depuis la tier list ou ajoute des parties.' : ' Lance une analyse de ce mode : cupcake.gg lit les parties récentes des meilleurs joueurs dans ce mode.'}` : 'Les builds ont besoin d’une clé API Riot dans le fichier .env.'}</p>
       ${!S.cfg.hasKey ? '' : mode === 'sr' ? '<a class="btn btn-primary" href="#/champions">Ouvrir la tier list</a>' : cm?.job?.running ? `<p class="row"><span class="spinner"></span>Analyse ${esc(MODE_LABEL[mode])} en cours : ${cm.job.done} / ${cm.job.target} parties. Recharge la page dans quelques minutes.</p>` : `<button class="btn btn-primary" type="button" id="startMode">Analyser 100 parties ${esc(MODE_LABEL[mode])}</button>`}

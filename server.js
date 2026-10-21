@@ -194,6 +194,40 @@ function rememberName(puuid, name, tag) {
   return names.set(puuid, { name, tag }, 86400);
 }
 
+/* ---------- Annuaire des joueurs connus (suggestions pendant la saisie) ---------- */
+// Riot ne permet pas de chercher un joueur par début de nom : on indexe tous les
+// joueurs croisés (profils, parties, classement, partie en direct) pour les proposer.
+const players = new Map(); // clé « plateforme|nom#tag » en minuscules
+const normName = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+let playersDirty = false;
+function indexPlayer(p, name, tag, extra = {}) {
+  if (!p || !name || !tag || !PLATFORMS[p]) return;
+  const k = `${p}|${name}#${tag}`.toLowerCase();
+  const prev = players.get(k);
+  players.set(k, { p, name, tag, n: normName(name), icon: extra.icon ?? prev?.icon ?? null, tier: extra.tier || prev?.tier || '', lp: extra.lp ?? prev?.lp ?? null, seen: Date.now() });
+  playersDirty = true;
+  if (players.size > 80000) {
+    const old = [...players.entries()].sort((a, b) => a[1].seen - b[1].seen).slice(0, 10000);
+    for (const [key] of old) players.delete(key);
+  }
+}
+function searchPlayers(q, p, limit = 8) {
+  const raw = String(q || '');
+  const [namePart, tagPart = null] = raw.includes('#') ? [raw.slice(0, raw.lastIndexOf('#')), raw.slice(raw.lastIndexOf('#') + 1)] : [raw, null];
+  const n = normName(namePart);
+  const t = tagPart == null ? null : tagPart.toLowerCase().trim();
+  if (!n || n.length < 2) return [];
+  const out = [];
+  for (const x of players.values()) {
+    if (t != null && !x.tag.toLowerCase().startsWith(t)) continue;
+    const i = x.n.indexOf(n);
+    if (i < 0) continue;
+    out.push({ x, score: (i === 0 ? 0 : 2) + (x.p === p ? 0 : 1) + (x.n === n ? -1 : 0) });
+  }
+  out.sort((a, b) => a.score - b.score || (b.x.lp ?? -1) - (a.x.lp ?? -1) || a.x.n.length - b.x.n.length);
+  return out.slice(0, limit).map(({ x }) => ({ p: x.p, name: x.name, tag: x.tag, icon: x.icon, tier: x.tier, lp: x.lp }));
+}
+
 /* ------------------------------------------------------------------ */
 /* Limiteur de débit (une file par hôte Riot, priorité utilisateur)    */
 /* ------------------------------------------------------------------ */
@@ -690,6 +724,10 @@ async function getSummoner(platform, name, tag, force) {
     );
   }
   rememberName(acc.puuid, acc.gameName, acc.tagLine);
+  {
+    const solo = compactLeague(league).solo;
+    indexPlayer(platform, acc.gameName, acc.tagLine, { icon: sum.profileIconId, tier: solo?.tier, lp: solo?.lp });
+  }
   return {
     platform,
     puuid: acc.puuid,
@@ -799,7 +837,9 @@ async function getMatch(platform, id) {
   if (hit) return hit;
   const raw = await riot(matchHost(platform), `/lol/match/v5/matches/${id}`, { store: false });
   if (!raw || !raw.info) return null;
-  return cache.set(ck, compactMatch(raw), 3 * 86400);
+  const m = compactMatch(raw);
+  for (const pp of m.parts) if (pp.tag) indexPlayer(platform, pp.name, pp.tag);
+  return cache.set(ck, m, 3 * 86400);
 }
 
 async function getMatches(platform, puuid, q) {
@@ -1063,6 +1103,106 @@ async function getLive(platform, puuid) {
   };
 }
 
+/* ---------- Partie en direct : fiche détaillée d'un joueur (chargée carte par carte) ---------- */
+
+const ROLES_OK = ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY'];
+const LIVE_GAMES = clampInt(process.env.LIVE_GAMES, 3, 20, 8);
+async function getLivePlayer(platform, puuid, champ, role) {
+  const ck = `lp:${puuid}:${champ}:${role}`;
+  const hit = cache.get(ck);
+  if (hit) return hit;
+  const host = matchHost(platform);
+  const now = Math.floor(Date.now() / 1000);
+  const [mast, ids12, ids30, idsRanked] = await Promise.all([
+    riot(platform, `/lol/champion-mastery/v4/champion-masteries/by-puuid/${puuid}/by-champion/${champ}`, { prio: 1, ttl: 3600 }).catch(() => null),
+    riot(host, `/lol/match/v5/matches/by-puuid/${puuid}/ids?startTime=${now - 12 * 3600}&count=100`, { prio: 1, ttl: 600 }).catch(() => []),
+    riot(host, `/lol/match/v5/matches/by-puuid/${puuid}/ids?startTime=${now - 30 * 86400}&count=100`, { prio: 1, ttl: 1800 }).catch(() => []),
+    riot(host, `/lol/match/v5/matches/by-puuid/${puuid}/ids?type=ranked&start=0&count=${LIVE_GAMES}`, { prio: 1, ttl: 600 }).catch(() => []),
+  ]);
+  const games = (await Promise.all((idsRanked || []).map((id) => getMatch(platform, id).catch(() => null)))).filter(Boolean);
+  const rec = [];
+  for (const m of games) {
+    const me = m.parts.find((x) => x.puuid === puuid);
+    if (!me || m.remake) continue;
+    const team = m.parts.filter((x) => x.team === me.team);
+    const tk = team.reduce((s, x) => s + x.k, 0);
+    rec.push({ m, me, min: Math.max(1, m.dur / 60), kp: tk ? (me.k + me.a) / tk : 0, start: m.start });
+  }
+  const n = rec.length;
+  const avg = (f) => (n ? rec.reduce((s, r) => s + f(r), 0) / n : 0);
+  const onChamp = rec.filter((r) => r.me.champ === champ);
+  const roles = {};
+  for (const r of rec) if (r.me.pos) roles[r.me.pos] = (roles[r.me.pos] || 0) + 1;
+  const mainRoles = Object.entries(roles).sort((a, b) => b[1] - a[1]).map(([r]) => r);
+  let streak = 0;
+  for (const r of rec) {
+    if (!streak) streak = r.me.win ? 1 : -1;
+    else if ((streak > 0) === r.me.win) streak += streak > 0 ? 1 : -1;
+    else break;
+  }
+  const champCounts = {};
+  for (const r of rec) champCounts[r.me.champ] = (champCounts[r.me.champ] || 0) + 1;
+  const stats = {
+    n,
+    w: rec.filter((r) => r.me.win).length,
+    k: avg((r) => r.me.k),
+    d: avg((r) => r.me.d),
+    a: avg((r) => r.me.a),
+    kp: avg((r) => r.kp),
+    vis: avg((r) => r.me.vis / r.min),
+    cs: avg((r) => r.me.cs / r.min),
+    bld: avg((r) => r.me.bld),
+    dmg: avg((r) => r.me.dmg / r.min),
+    solo: avg((r) => r.me.solo || 0),
+  };
+  const champ1 = {
+    n: onChamp.length,
+    w: onChamp.filter((r) => r.me.win).length,
+    k: onChamp.length ? onChamp.reduce((s, r) => s + r.me.k, 0) / onChamp.length : 0,
+    d: onChamp.length ? onChamp.reduce((s, r) => s + r.me.d, 0) / onChamp.length : 0,
+    a: onChamp.length ? onChamp.reduce((s, r) => s + r.me.a, 0) / onChamp.length : 0,
+  };
+  // Étiquettes : g = positif, b = négatif, n = neutre
+  const tags = [];
+  const t = (kind, label, hint) => tags.push({ kind, label, hint });
+  const lvl = mast?.championLevel || 0;
+  const pts = mast?.championPoints || 0;
+  if (!mast || pts < 1000) t('n', '1ère partie', 'Aucune maîtrise ou presque sur ce champion');
+  else if (pts >= 200000) t('g', 'Main champion', `${pts.toLocaleString('fr-FR')} points de maîtrise`);
+  else if (lvl >= 10) t('g', 'Main champion', `Maîtrise niveau ${lvl}`);
+  if (onChamp.length >= 3 && onChamp.length >= n * 0.6) t('g', 'One trick', 'Joue presque uniquement ce champion');
+  if (n >= 3 && mainRoles.length && role && !mainRoles.slice(0, 2).includes(role)) t('n', 'Fill ?', 'N’est pas sur son rôle habituel');
+  if (streak >= 3) t('g', `Série de ${streak} victoires`, 'Sur ses dernières parties classées');
+  if (streak <= -3) t('b', `Série de ${-streak} défaites`, 'Sur ses dernières parties classées');
+  if (n >= 3) {
+    if (stats.kp >= 0.62) t('g', 'Haute participation', `${Math.round(stats.kp * 100)}% de participation aux kills`);
+    if (stats.kp > 0 && stats.kp < 0.4 && role !== 'TOP') t('b', 'Joue seul', `${Math.round(stats.kp * 100)}% de participation aux kills`);
+    const visGood = role === 'UTILITY' ? 2.2 : role === 'JUNGLE' ? 1.3 : 1;
+    const visBad = role === 'UTILITY' ? 1.3 : role === 'JUNGLE' ? 0.7 : 0.45;
+    if (stats.vis >= visGood) t('g', 'Bonne vision', `${stats.vis.toFixed(2)} vision/min`);
+    else if (stats.vis < visBad) t('b', 'Mauvaise vision', `${stats.vis.toFixed(2)} vision/min`);
+    if (stats.d >= 7.5) t('b', 'Meurt souvent', `${stats.d.toFixed(1)} morts/partie`);
+    else if (stats.d <= 3.5) t('g', 'Joue safe', `${stats.d.toFixed(1)} morts/partie`);
+    if (['TOP', 'MIDDLE', 'BOTTOM'].includes(role) && stats.solo >= 1.2) t('g', 'Laner agressif', `${stats.solo.toFixed(1)} solo kills/partie`);
+    if (['TOP', 'MIDDLE', 'BOTTOM'].includes(role) && stats.cs >= 8) t('g', 'Bon farm', `${stats.cs.toFixed(1)} CS/min`);
+    if (['TOP', 'MIDDLE', 'BOTTOM'].includes(role) && stats.cs > 0 && stats.cs < 5.5) t('b', 'Farm faible', `${stats.cs.toFixed(1)} CS/min`);
+    if (role !== 'UTILITY' && stats.bld >= 6000) t('g', 'Split pusher', `${Math.round(stats.bld)} dégâts aux bâtiments/partie`);
+    if (role !== 'UTILITY' && stats.bld > 0 && stats.bld < 1200) t('b', 'Oublie les tours', `${Math.round(stats.bld)} dégâts aux bâtiments/partie`);
+  }
+  const out = {
+    mastery: { lvl, pts, last: mast?.lastPlayTime || null },
+    h12: (ids12 || []).length,
+    d30: (ids30 || []).length,
+    d30cap: (ids30 || []).length >= 100,
+    stats,
+    champ: champ1,
+    mainRoles: mainRoles.slice(0, 2),
+    form: rec.slice(0, 10).map((r) => (r.me.win ? 1 : 0)),
+    tags,
+  };
+  return cache.set(ck, out, 900);
+}
+
 async function getRotation(platform) {
   const r = await riot(platform, '/lol/platform/v3/champion-rotations', { ttl: 3600 });
   return { free: r?.freeChampionIds || [], newbie: r?.freeChampionIdsForNewPlayers || [], newbieLevel: r?.maxNewPlayerLevel || 0 };
@@ -1095,22 +1235,31 @@ async function getStatus(platform) {
 
 const APEX = ['CHALLENGER', 'GRANDMASTER', 'MASTER'];
 
+async function apexRows(platform, qk, tiers) {
+  const lists = await Promise.all(
+    tiers.map((l) => riot(platform, `/lol/league/v4/${l}/by-queue/${qk}`, { store: false, ttl: 600 }).catch(() => null))
+  );
+  const rows = [];
+  for (const l of lists) {
+    if (!l) continue;
+    for (const e of l.entries || []) {
+      rows.push({ p: platform, puuid: e.puuid || null, tier: l.tier, lp: e.leaguePoints, w: e.wins, l: e.losses, hot: !!e.hotStreak, vet: !!e.veteran, fresh: !!e.freshBlood });
+    }
+  }
+  return rows;
+}
+
+// platform = 'world' : Challenger de toutes les régions, fusionnés par LP.
 async function getLadder(platform, queue, page) {
   const qk = queue === 'flex' ? 'RANKED_FLEX_SR' : 'RANKED_SOLO_5x5';
   const ck = `ladder:${platform}:${qk}`;
   let rows = cache.get(ck);
   if (!rows) {
-    const lists = await Promise.all(
-      ['challengerleagues', 'grandmasterleagues', 'masterleagues'].map((l) =>
-        riot(platform, `/lol/league/v4/${l}/by-queue/${qk}`, { store: false })
-      )
-    );
-    rows = [];
-    for (const l of lists) {
-      if (!l) continue;
-      for (const e of l.entries || []) {
-        rows.push({ puuid: e.puuid || null, tier: l.tier, lp: e.leaguePoints, w: e.wins, l: e.losses, hot: !!e.hotStreak, vet: !!e.veteran, fresh: !!e.freshBlood });
-      }
+    if (platform === 'world') {
+      const all = await Promise.all(Object.keys(PLATFORMS).map((p) => apexRows(p, qk, ['challengerleagues'])));
+      rows = all.flat();
+    } else {
+      rows = await apexRows(platform, qk, ['challengerleagues', 'grandmasterleagues', 'masterleagues']);
     }
     rows.sort((a, b) => APEX.indexOf(a.tier) - APEX.indexOf(b.tier) || b.lp - a.lp || b.w - a.w);
     rows.forEach((r, i) => {
@@ -1121,8 +1270,89 @@ async function getLadder(platform, queue, page) {
   const size = 25;
   const pages = Math.max(1, Math.ceil(rows.length / size));
   const p = clampInt(page, 1, pages, 1);
-  const slice = rows.slice((p - 1) * size, p * size).map((r) => ({ ...r, ...(r.puuid ? names.get(r.puuid) || {} : {}) }));
+  const slice = rows.slice((p - 1) * size, p * size).map((r) => ({ ...r, ...(r.puuid ? ladderId.get(r.puuid) || names.get(r.puuid) || {} : {}) }));
   return { queue: qk, page: p, pages, total: rows.length, size, rows: slice };
+}
+
+const ladderId = new TTLCache(20000);
+const parseItems = (list, max) =>
+  String(list || '')
+    .split(',')
+    .map((x) => x.split(':'))
+    .filter(([p, id]) => PLATFORMS[p] && isPuuid(id))
+    .slice(0, max);
+
+// Identité : nom, icône, niveau, meilleures maîtrises (3 requêtes par joueur, mises en cache 24 h).
+async function getLadderIdentity(list) {
+  const out = {};
+  await Promise.all(
+    parseItems(list, 25).map(async ([p, id]) => {
+      const hit = ladderId.get(id);
+      if (hit) return (out[id] = hit);
+      const [acc, sum, mast] = await Promise.all([
+        names.get(id) ||
+          riot(accountHost(p), `/riot/account/v1/accounts/by-puuid/${id}`, { ttl: 86400 })
+            .then((a) => (a ? rememberName(id, a.gameName, a.tagLine) : null))
+            .catch(() => null),
+        riot(p, `/lol/summoner/v4/summoners/by-puuid/${id}`, { ttl: 86400 }).catch(() => null),
+        riot(p, `/lol/champion-mastery/v4/champion-masteries/by-puuid/${id}/top?count=4`, { ttl: 86400 }).catch(() => null),
+      ]);
+      if (!acc && !sum) return;
+      const v = { ...(acc || {}), icon: sum?.profileIconId ?? null, level: sum?.summonerLevel ?? null, mastery: (mast || []).map((m) => m.championId) };
+      if (acc) indexPlayer(p, acc.name, acc.tag, { icon: v.icon });
+      out[id] = ladderId.set(id, v, 86400);
+    })
+  );
+  return out;
+}
+
+// Forme récente : rôle principal, KDA et champions sur les dernières parties classées (tâche de fond).
+const LADDER_GAMES = clampInt(process.env.LADDER_GAMES, 1, 20, 5);
+async function getLadderStats(list) {
+  const out = {};
+  for (const [p, id] of parseItems(list, 5)) {
+    const ck = 'lstats:' + id;
+    const hit = cache.get(ck);
+    if (hit) {
+      out[id] = hit;
+      continue;
+    }
+    const ids =
+      (await riot(matchHost(p), `/lol/match/v5/matches/by-puuid/${id}/ids?queue=420&type=ranked&start=0&count=${LADDER_GAMES}`, { prio: 1, ttl: 1800 }).catch(() => null)) || [];
+    const games = (await Promise.all(ids.map((mid) => getMatch(p, mid).catch(() => null)))).filter(Boolean);
+    const roles = {};
+    const champs = {};
+    let k = 0;
+    let d = 0;
+    let a = 0;
+    let n = 0;
+    for (const m of games) {
+      const me = m.parts.find((x) => x.puuid === id);
+      if (!me || m.remake) continue;
+      n++;
+      k += me.k;
+      d += me.d;
+      a += me.a;
+      if (me.pos) roles[me.pos] = (roles[me.pos] || 0) + 1;
+      champs[me.champ] = (champs[me.champ] || 0) + 1;
+    }
+    const role = Object.entries(roles).sort((x, y) => y[1] - x[1])[0];
+    out[id] = cache.set(
+      ck,
+      {
+        n,
+        kda: n ? (k + a) / Math.max(1, d) : null,
+        role: role ? role[0] : null,
+        rolePct: role && n ? role[1] / n : null,
+        champs: Object.entries(champs)
+          .sort((x, y) => y[1] - x[1])
+          .map(([c]) => Number(c))
+          .slice(0, 4),
+      },
+      3600
+    );
+  }
+  return out;
 }
 
 async function getAccounts(platform, list) {
@@ -1576,10 +1806,14 @@ route('GET', new RegExp(`^/api/match/${P}/([A-Z0-9]+_\\d+)$`), async (m) => {
 });
 route('GET', new RegExp(`^/api/season/${P}/([\\w-]+)$`), (m, q) => getSeasonCount(plat(m[1]), puuidParam(m[2]), q.force === '1'));
 route('GET', new RegExp(`^/api/timeline/${P}/([A-Z0-9]+_\\d+)$`), (m) => getTimeline(plat(m[1]), m[2]));
+route('GET', new RegExp(`^/api/live-player/${P}/([\\w-]+)$`), (m, q) => getLivePlayer(plat(m[1]), puuidParam(m[2]), Number(q.champ) || 0, ROLES_OK.includes(q.role) ? q.role : ''));
 route('GET', new RegExp(`^/api/live/${P}/([\\w-]+)$`), (m) => getLive(plat(m[1]), puuidParam(m[2])));
 route('GET', new RegExp(`^/api/rotation/${P}$`), (m) => getRotation(plat(m[1])));
 route('GET', new RegExp(`^/api/status/${P}$`), (m) => getStatus(plat(m[1])));
-route('GET', new RegExp(`^/api/ladder/${P}$`), (m, q) => getLadder(plat(m[1]), q.queue, q.page));
+route('GET', new RegExp(`^/api/ladder/${P}$`), (m, q) => getLadder(m[1] === 'world' ? 'world' : plat(m[1]), q.queue, q.page));
+route('GET', /^\/api\/ladder-id$/, (m, q) => getLadderIdentity(q.ids));
+route('GET', /^\/api\/ladder-stats$/, (m, q) => getLadderStats(q.ids));
+route('GET', /^\/api\/players$/, (m, q) => searchPlayers(q.q, q.p));
 route('GET', new RegExp(`^/api/accounts/${P}$`), (m, q) => getAccounts(plat(m[1]), q.puuids));
 route('GET', new RegExp(`^/api/meta/${P}$`), (m, q) => metaSummary(plat(m[1]), modeOf(q.mode)));
 route('GET', new RegExp(`^/api/meta/${P}/champion/(\\d+)$`), (m, q) => metaChampion(plat(m[1]), Number(m[2]), q.patch, modeOf(q.mode)));
@@ -1874,6 +2108,30 @@ for (const sig of ['SIGTERM', 'SIGINT']) {
   });
 }
 
+async function loadPlayers() {
+  const file = path.join(DATA_DIR, 'players.json');
+  for (const x of await readJson(file, [])) indexPlayer(x.p, x.name, x.tag, x);
+  // Joueurs vus dans les échantillons de builds.
+  try {
+    for (const f of (await fsp.readdir(DATA_DIR)).filter((f) => /^meta2-[a-z0-9]+(-\w+)?\.json$/.test(f))) {
+      const plat = f.slice(6, -5).split('-')[0];
+      const m = await readJson(path.join(DATA_DIR, f), null);
+      for (const P of Object.values(m?.patches || {}))
+        for (const c of Object.values(P.champs || {})) for (const g of c.recent || []) if (g.n && g.tg) indexPlayer(plat, g.n, g.tg, { tier: g.tier, lp: g.lp });
+    }
+  } catch {
+    /* pas de données */
+  }
+  playersDirty = false;
+  console.log(`  Annuaire de joueurs : ${players.size} joueurs connus.`);
+  setInterval(async () => {
+    if (!playersDirty) return;
+    playersDirty = false;
+    const list = [...players.values()].map(({ p, name, tag, icon, tier, lp, seen }) => ({ p, name, tag, icon, tier, lp, seen }));
+    await writeJson(file, list).catch(() => {});
+  }, 60e3);
+}
+
 // Données de départ versionnées dans seed/ (copiées si data/ est vide, ex. Render gratuit).
 async function restoreSeed() {
   const seed = path.join(__dirname, 'seed');
@@ -1897,6 +2155,7 @@ async function restoreSeed() {
 (async () => {
 await restoreFromR2();
 await restoreSeed();
+await loadPlayers();
 server.listen(PORT, HOST, async () => {
   console.log(`\n  cupcake.gg prêt : http://localhost:${PORT}\n`);
   if (!KEY) {

@@ -204,6 +204,10 @@ export const DEFAULT_TAG = {
 
 export const norm = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/gi, '').toLowerCase();
 
+// Message affiché sur la version de démonstration (hébergement gratuit en attendant l'accord de Riot).
+export const DEMO_NOTE =
+  'Version de démonstration : seules 150 parties classées (Faille de l’invocateur, EUW) sont répertoriées, et les builds ARAM, ARAM du chaos et Arena ne sont pas encore disponibles. Analyser plus de parties demande un serveur payant ; je le mettrai en place dès que Riot aura validé le projet.';
+
 export const CLASSES = { Fighter: 'Combattant', Tank: 'Tank', Mage: 'Mage', Assassin: 'Assassin', Marksman: 'Tireur', Support: 'Support' };
 
 /* ---------- Images Data Dragon ---------- */

@@ -1,7 +1,7 @@
 // Accueil : recherche unifiée, aperçu de la tier list, rotation, favoris, récents, état du serveur.
 import {
-  S, api, esc, store, champImg, champOf, champHref, crest, rankText, playerHref, profileImg, pct,
-  regionOptions, setPlatform, removeRecent, setTitle, loading, ago, roleIcon, ROLES, ROLE_ORDER,
+  S, api, esc, DEMO_NOTE, store, champImg, champOf, champHref, crest, rankText, playerHref, profileImg, pct,
+  regionOptions, setPlatform, removeRecent, toggleFav, setTitle, loading, ago, roleIcon, ROLES, ROLE_ORDER,
 } from '../core.js';
 import { bindOmni } from '../omni.js';
 import { tierRows } from './champions.js';
@@ -24,7 +24,6 @@ export async function render(el, _params, ctx) {
       </div>
       <p class="hero-hint">Exemples : <button type="button" class="link-btn" data-try="Ahri">Ahri</button>, <button type="button" class="link-btn" data-try="Lee Sin">Lee Sin</button>, ou un Riot ID comme <kbd>Pseudo#EUW</kbd>. Raccourci : <kbd>Ctrl K</kbd> depuis n’importe quelle page.</p>
     </section>
-
     <div class="home-grid">
       <section class="panel card-accent" aria-labelledby="h-tier">
         <div class="panel-title"><h2 id="h-tier">Meilleurs champions du patch</h2><a class="small" href="#/champions">Tier list complète</a></div>
@@ -87,7 +86,7 @@ function personRow(x, i, removable) {
       </span>
       ${x.rank ? crest(x.rank, 'sm') : ''}
     </a>
-    ${removable ? `<button class="x-btn" type="button" data-i="${i}" aria-label="Retirer ${esc(x.name)} des recherches récentes">×</button>` : ''}
+    <button class="x-btn" type="button" data-i="${i}" aria-label="Retirer ${esc(x.name)} des ${removable ? 'recherches récentes' : 'favoris'}">×</button>
   </li>`;
 }
 
@@ -95,8 +94,14 @@ function drawPeople(el) {
   const favs = store.get('favs', []);
   const recents = store.get('recent', []).slice(0, 5);
   el.querySelector('#favs').innerHTML = favs.length
-    ? `<ul class="people">${favs.map((x, i) => personRow(x, i, false)).join('')}</ul>`
+    ? `<ul class="people" id="favList">${favs.map((x, i) => personRow(x, i, false)).join('')}</ul>`
     : `<p class="muted small pad">Ajoute un joueur avec le bouton « Ajouter aux favoris » de son profil.</p>`;
+  el.querySelectorAll('#favList .x-btn').forEach((b) =>
+    b.addEventListener('click', () => {
+      toggleFav(favs[Number(b.dataset.i)]);
+      drawPeople(el);
+    })
+  );
   const rec = el.querySelector('#recents');
   rec.innerHTML = recents.length
     ? `<ul class="people">${recents.map((x, i) => personRow(x, i, true)).join('')}</ul>`

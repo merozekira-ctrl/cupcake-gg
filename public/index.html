@@ -4,12 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>cupcake.gg · statistiques League of Legends</title>
-  <meta name="description" content="Profils, historique de parties, partie en direct, tier list, classement et encyclopédie League of Legends.">
+  <meta name="description" content="Profils, partie en direct, tier list, builds, matchups, classement des OTP et patch notes League of Legends. Gratuit.">
   <link rel="icon" href="/brand/favicon.png" type="image/png">
   <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
   <link rel="preload" href="/fonts/figtree-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/fonts/fonts.css">
-  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/css/01-base.css">
+  <link rel="stylesheet" href="/css/02-home.css">
+  <link rel="stylesheet" href="/css/03-profile.css">
+  <link rel="stylesheet" href="/css/04-champions.css">
+  <link rel="stylesheet" href="/css/05-rankings.css">
+  <link rel="stylesheet" href="/css/06-misc.css">
   <script src="/js/theme-init.js"></script>
   <script type="module" src="/js/main.js"></script>
 </head>
@@ -24,10 +29,21 @@
       </a>
 
       <nav class="nav" aria-label="Navigation principale">
-        <a href="#/champions" data-nav="champions">Tier list et builds</a>
+        <a href="#/champions" data-nav="champions">Tier list</a>
         <a href="#/champions?vue=tous" data-nav="liste">Champions</a>
-        <a href="#/classement" data-nav="classement">Classement</a>
-        <a href="#/multi" data-nav="multi">Multi-recherche</a>
+        <a href="#/matchups" data-nav="matchups">Matchups <span class="nav-new">NEW</span></a>
+        <div class="nav-dd" id="navRank" data-nav="classements">
+          <button type="button" aria-expanded="false" aria-controls="navRankMenu">Classements
+            <svg viewBox="0 0 20 20" width="14" height="14" aria-hidden="true"><path d="m5 8 5 5 5-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <div class="nav-menu" id="navRankMenu" role="menu">
+            <a href="#/classement" role="menuitem" data-sub="solo"><span class="nm-ic"><img src="/ranks/challenger.png" alt=""></span><span><b>Solo/Duo</b><small>Les meilleurs joueurs de chaque région</small></span></a>
+            <a href="#/classement?queue=flex" role="menuitem" data-sub="flex"><span class="nm-ic"><img src="/ranks/grandmaster.png" alt=""></span><span><b>Flex</b><small>Le classement en file flexible</small></span></a>
+            <a href="#/otp" role="menuitem" data-sub="otp"><span class="nm-ic nm-otp" aria-hidden="true"><span></span><span></span></span><span><b>OTP</b><small>Les meilleurs one-trick de chaque champion</small></span></a>
+          </div>
+        </div>
+        <a href="#/patch" data-nav="patch">Patch notes</a>
+        <a href="#/multi" data-nav="multi">Multi</a>
         <a href="#/wiki/objets" data-nav="wiki">Encyclopédie</a>
       </nav>
 
@@ -44,21 +60,23 @@
     </div>
   </header>
 
-  <div class="aurora" aria-hidden="true"></div>
   <div id="banner"></div>
-  <div style="position:relative;z-index:1;max-width:1240px;margin:14px auto 0;padding:0 16px">
-    <div role="note" style="display:flex;gap:12px;align-items:flex-start;padding:14px 18px;border-radius:14px;border:1px solid rgba(255,111,174,.6);background:linear-gradient(90deg,rgba(255,111,174,.14),rgba(58,160,255,.08));color:var(--text,#e9eef2)">
-      <span aria-hidden="true" style="flex-shrink:0;display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:#ff6fae;color:#fff;font-weight:800">!</span>
+  <div class="demo-banner">
+    <div role="note">
+      <span class="db-ic" aria-hidden="true">!</span>
       <div>
-        <strong style="display:block;font-size:16px;margin-bottom:3px">Maquette en attente de validation Riot</strong>
-        <p style="margin:0;font-size:14px;line-height:1.5">Version de démonstration : seules 150 parties classées (Faille de l’invocateur, EUW) sont répertoriées, et les builds ARAM, ARAM du chaos et Arena ne sont pas encore disponibles. Analyser plus de parties demande un serveur payant ; je le mettrai en place dès que Riot aura validé le projet.</p>
+        <strong>Maquette en attente de validation Riot</strong>
+        <p>Version de démonstration : seules 150 parties classées (Faille de l’invocateur, EUW) sont répertoriées, et les builds ARAM, ARAM du chaos et Arena ne sont pas encore disponibles. Analyser plus de parties demande un serveur payant ; je le mettrai en place dès que Riot aura validé le projet.</p>
       </div>
     </div>
   </div>
   <main id="view" tabindex="-1"></main>
 
   <footer class="foot">
-    <p>cupcake.gg n'est pas approuvé par Riot Games et ne reflète pas les opinions de Riot Games ni de quiconque officiellement impliqué dans la production ou la gestion des propriétés de Riot Games. Riot Games et toutes les propriétés associées sont des marques commerciales ou des marques déposées de Riot Games, Inc.</p>
+    <div class="foot-in">
+      <div class="foot-brand"><img src="/brand/mark.png" alt="" width="31" height="30">cupcake.gg <span>Statistiques League of Legends, 100 % gratuites.</span></div>
+      <p>cupcake.gg n'est pas approuvé par Riot Games et ne reflète pas les opinions de Riot Games ni de quiconque officiellement impliqué dans la production ou la gestion des propriétés de Riot Games. Riot Games et toutes les propriétés associées sont des marques commerciales ou des marques déposées de Riot Games, Inc.</p>
+    </div>
   </footer>
 
   <dialog class="palette" id="omniDialog" aria-label="Recherche">

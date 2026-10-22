@@ -1,0 +1,312 @@
+/* =====================================================================
+   Multi-recherche, encyclopédie, animations
+   ===================================================================== */
+
+/* ---------- Multi-recherche ---------- */
+
+.multi-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+}
+.multi-form textarea {
+  width: 100%;
+}
+.multi-form .side {
+  display: grid;
+  gap: 8px;
+}
+@media (max-width: 640px) {
+  .multi-form {
+    grid-template-columns: 1fr;
+  }
+}
+.multi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+.mp {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  align-content: start;
+}
+.mp-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.mp-top a {
+  font-weight: 700;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+}
+.mp-top a:hover {
+  text-decoration: underline;
+}
+.form {
+  display: flex;
+  gap: 3px;
+}
+.form span {
+  flex: 1;
+  height: 22px;
+  border-radius: 3px;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 700;
+}
+.form .w {
+  background: var(--win);
+  color: var(--bg);
+}
+.form .l {
+  background: var(--loss-stripe);
+  color: var(--bg);
+}
+.form .r {
+  background: var(--remake-bg);
+  color: var(--muted);
+  border: 1px solid var(--line-soft);
+}
+.mp-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  text-align: center;
+}
+.mp-stats b {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 16px;
+}
+.mp-stats small {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.mp-champs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.mp-champs div {
+  display: grid;
+  justify-items: center;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* ---------- Encyclopédie ---------- */
+
+.wiki-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .wiki-layout {
+    grid-template-columns: 1fr;
+  }
+}
+.item-group + .item-group {
+  margin-top: 18px;
+}
+.item-group h3 {
+  font-size: 14px;
+  margin-bottom: 8px;
+  color: var(--muted);
+}
+.item-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.item-grid button {
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: var(--r-sm);
+  background: none;
+  cursor: pointer;
+}
+.item-grid button:hover,
+.item-grid button[aria-pressed='true'] {
+  border-color: var(--accent);
+}
+.item-grid .ic {
+  border-radius: 5px;
+}
+.item-detail {
+  position: sticky;
+  top: calc(var(--topbar-h) + 14px);
+  padding: 16px;
+}
+.item-detail .head {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.item-detail .gold {
+  color: var(--accent);
+  font-weight: 700;
+}
+.item-detail .desc {
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+.item-detail h4 {
+  font-size: 13px;
+  margin: 14px 0 6px;
+  color: var(--muted);
+}
+.tree-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
+.tree-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px 6px;
+}
+.rune-row {
+  padding: 8px 16px;
+  border-top: 1px solid var(--line-soft);
+}
+.rune {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 10px;
+  padding: 6px 0;
+}
+.rune strong {
+  font-size: 14px;
+}
+.rune p {
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.45;
+  margin-top: 2px;
+}
+.spell-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+}
+.spell-card {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 12px;
+  padding: 14px;
+}
+.spell-card p {
+  font-size: 13.5px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.spell-card .meta {
+  font-size: 12.5px;
+  margin-top: 3px;
+}
+
+/* Entrée de page */
+.view-enter > * {
+  animation: rise 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.view-enter > *:nth-child(2) { animation-delay: 0.05s; }
+.view-enter > *:nth-child(3) { animation-delay: 0.1s; }
+.view-enter > *:nth-child(4) { animation-delay: 0.15s; }
+.view-enter > *:nth-child(n + 5) { animation-delay: 0.2s; }
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+/* Listes qui apparaissent en cascade */
+.match-list > .match-wrap,
+.pb-list > .pb,
+.mastery-grid > .m-card,
+.tier-table tbody tr,
+.champ-grid > a,
+.rotation > a {
+  animation: rise 0.4s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.match-list > .match-wrap:nth-child(10n + 2), .pb-list > .pb:nth-child(10n + 2), .mastery-grid > .m-card:nth-child(10n + 2), .tier-table tbody tr:nth-child(10n + 2) { animation-delay: 0.03s; }
+.match-list > .match-wrap:nth-child(10n + 3), .pb-list > .pb:nth-child(10n + 3), .mastery-grid > .m-card:nth-child(10n + 3), .tier-table tbody tr:nth-child(10n + 3) { animation-delay: 0.06s; }
+.match-list > .match-wrap:nth-child(10n + 4), .pb-list > .pb:nth-child(10n + 4), .mastery-grid > .m-card:nth-child(10n + 4), .tier-table tbody tr:nth-child(10n + 4) { animation-delay: 0.09s; }
+.match-list > .match-wrap:nth-child(10n + 5), .pb-list > .pb:nth-child(10n + 5), .mastery-grid > .m-card:nth-child(10n + 5), .tier-table tbody tr:nth-child(10n + 5) { animation-delay: 0.12s; }
+.match-list > .match-wrap:nth-child(10n + 6), .pb-list > .pb:nth-child(10n + 6), .mastery-grid > .m-card:nth-child(10n + 6), .tier-table tbody tr:nth-child(10n + 6) { animation-delay: 0.15s; }
+.match-list > .match-wrap:nth-child(10n + 7), .pb-list > .pb:nth-child(10n + 7), .mastery-grid > .m-card:nth-child(10n + 7), .tier-table tbody tr:nth-child(10n + 7) { animation-delay: 0.18s; }
+.match-list > .match-wrap:nth-child(10n + 8), .pb-list > .pb:nth-child(10n + 8), .mastery-grid > .m-card:nth-child(10n + 8), .tier-table tbody tr:nth-child(10n + 8) { animation-delay: 0.21s; }
+.match-list > .match-wrap:nth-child(10n + 9), .pb-list > .pb:nth-child(10n + 9), .mastery-grid > .m-card:nth-child(10n + 9), .tier-table tbody tr:nth-child(10n + 9) { animation-delay: 0.24s; }
+.match-list > .match-wrap:nth-child(10n), .pb-list > .pb:nth-child(10n), .mastery-grid > .m-card:nth-child(10n), .tier-table tbody tr:nth-child(10n) { animation-delay: 0.27s; }
+
+
+/* ---------- Multi-recherche et encyclopédie : finitions v8 ---------- */
+.mp {
+  border-radius: 16px;
+}
+.form .w {
+  color: #fff;
+}
+:root[data-theme='light'] .form .w {
+  background: var(--win);
+}
+:root[data-theme='light'] .form .l {
+  background: var(--loss);
+  color: #fff;
+}
+.item-grid button {
+  border-radius: 10px;
+}
+.item-grid button:hover,
+.item-grid button[aria-pressed='true'] {
+  border-color: var(--accent);
+  box-shadow: 0 0 12px -2px rgba(255, 111, 174, 0.55);
+}
+:root[data-theme='light'] .item-grid button:hover,
+:root[data-theme='light'] .item-grid button[aria-pressed='true'] {
+  border-color: #0b0b12;
+  box-shadow: none;
+}
+.item-detail .gold {
+  color: var(--gold);
+}
+
+/* ---------- Animations d'entrée ---------- */
+.lr:not(.lr-head),
+.mg,
+.pn-card,
+.pod,
+.hc-row,
+.feat {
+  animation: rise 0.42s var(--ease) both;
+}
+.ltable > .lr:nth-child(2n), .mg-list > .mg:nth-child(2n), .pn-grid > .pn-card:nth-child(2n) { animation-delay: 0.03s; }
+.ltable > .lr:nth-child(3n), .mg-list > .mg:nth-child(3n), .pn-grid > .pn-card:nth-child(3n) { animation-delay: 0.06s; }
+.ltable > .lr:nth-child(5n), .mg-list > .mg:nth-child(5n), .pn-grid > .pn-card:nth-child(5n) { animation-delay: 0.09s; }
+.podium > .pod:nth-child(2) { animation-delay: 0.06s; }
+.podium > .pod:nth-child(3) { animation-delay: 0.12s; }
+.home-strip > .feat:nth-child(2) { animation-delay: 0.05s; }
+.home-strip > .feat:nth-child(3) { animation-delay: 0.1s; }
+.home-strip > .feat:nth-child(4) { animation-delay: 0.15s; }
+@media (prefers-reduced-motion: reduce) {
+  .hero-logo,
+  .hero-logo-wrap::before,
+  .brand-tld,
+  .hero-search::before {
+    animation: none !important;
+  }
+}

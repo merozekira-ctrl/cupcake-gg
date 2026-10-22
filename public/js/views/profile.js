@@ -2,7 +2,7 @@
 import {
   S, api, esc, num, dec, pct, kdaRatio, kdaText, ago, clock, queueName, isArena, champImg, champOf,
   champHref, spellImg, runeImg, profileImg, crest, rankText, playerHref, roleIcon, ROLES, ROLE_ORDER,
-  pushRecent, isFav, toggleFav, toast, errorState, loading, setTitle, setPlatform, TIERS,
+  pushRecent, isFav, toggleFav, toast, errorState, loading, setTitle, setPlatform, TIERS, proBadge, wrBadge,
 } from '../core.js';
 import { matchCard, bindMatchList, resultOf } from './match.js';
 
@@ -85,7 +85,7 @@ function draw(el, st, tab, ctx) {
     <section class="profile-head">
       <div class="avatar">${profileImg(s.icon, 88)}<span class="avatar-lvl" title="Niveau d’invocateur">${s.level}</span></div>
       <div class="grow">
-        <h1 class="p-name">${esc(s.name)} <span>#${esc(s.tag)}</span></h1>
+        <h1 class="p-name">${esc(s.name)} <span>#${esc(s.tag)}</span>${proBadge(s.pro)}</h1>
         <div class="p-meta">
           <span>${esc(S.cfg.platforms[s.platform].name)}</span>
           <span>Niveau ${s.level}</span>
@@ -350,7 +350,7 @@ function rankCard(label, r) {
       <div class="rank-lp">${num(r.lp)} LP</div>
       ${flags ? `<div style="margin-top:5px">${flags}</div>` : ''}
     </div>
-    <div class="rank-wr"><strong>${pct(r.w, n)}</strong>${r.w}V ${r.l}D</div>
+    <div class="rank-wr">${wrBadge(r.w, n)}<span>${r.w} V · ${r.l} D</span></div>
   </div>`;
 }
 
@@ -425,7 +425,7 @@ function drawOverview(body, st, ctx) {
           .slice(0, 7)
           .map((c) => {
             const ch = champOf(c.id);
-            return `<li>${champImg(c.id, 32)}<div class="nm">${ch ? `<a href="${champHref(ch)}">${esc(ch.name)}</a>` : '?'}<div class="sub">${kdaText(kdaRatio(c.k, c.d, c.a))} KDA</div></div><div class="val"><b class="${c.w / c.n >= 0.5 ? 'good' : 'bad'}">${pct(c.w, c.n)}</b><div class="sub">${c.n} partie${c.n > 1 ? 's' : ''}</div></div></li>`;
+            return `<li>${champImg(c.id, 32)}<div class="nm">${ch ? `<a href="${champHref(ch)}">${esc(ch.name)}</a>` : '?'}<div class="sub">${kdaText(kdaRatio(c.k, c.d, c.a))} KDA</div></div><div class="val">${wrBadge(c.w, c.n)}<div class="sub">${c.n} partie${c.n > 1 ? 's' : ''}</div></div></li>`;
           })
           .join('')}</ul>`
       : '<p class="muted small" style="padding:0 16px 16px">Pas encore de parties chargées.</p>';
@@ -498,7 +498,7 @@ async function drawChampions(body, st, ctx) {
           return `<tr>
             <td><div class="cell-player">${champImg(c.id, 32)}<div class="pn">${ch ? `<a href="${champHref(ch)}">${esc(ch.name)}</a>` : '?'}</div></div></td>
             <td class="num">${c.n}</td>
-            <td class="num" style="min-width:120px"><b class="${c.w / c.n >= 0.5 ? 'good' : 'bad'}">${pct(c.w, c.n)}</b> <span class="muted">${c.w}V ${c.n - c.w}D</span><div class="wr-split" style="margin-top:4px"><i style="width:${(c.w / c.n) * 100}%"></i></div></td>
+            <td class="num" style="min-width:130px">${wrBadge(c.w, c.n)} <span class="muted">${c.w}V ${c.n - c.w}D</span><div class="wr-split" style="margin-top:5px"><i style="width:${(c.w / c.n) * 100}%"></i></div></td>
             <td class="num"><b>${kdaText(kdaRatio(c.k, c.d, c.a))}</b><br><span class="muted">${dec(c.k / c.n)}/${dec(c.d / c.n)}/${dec(c.a / c.n)}</span></td>
             <td class="num">${pct(c.kp, c.n)}</td>
             <td class="num">${dec(c.cs / c.n)}</td>
@@ -569,14 +569,29 @@ function drawMastery(body, st, all = false) {
 
 const ROLE_SHORT = { TOP: 'Haut', JUNGLE: 'Jungle', MIDDLE: 'Milieu', BOTTOM: 'Tireur', UTILITY: 'Support' };
 
+const EYE_OFF = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c5 0 8.6 3.6 10 7-.6 1.4-1.5 2.8-2.7 4M6.4 6.4C4.5 7.7 3 9.7 2 12c1.4 3.4 5 7 10 7 1.9 0 3.6-.5 5.1-1.4M9.9 9.9a3 3 0 0 0 4.2 4.2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const hiddenBlock = (why) => `<div class="lc-hidden">${EYE_OFF}<b>Stats cachées</b><small>${why}</small></div>`;
+
 function liveCard(p, s, g) {
+  if (p.hidden) {
+    const ch = champOf(p.champ);
+    return `<article class="lc hidden-stats ${p.team === 100 ? 'blue' : 'red'}" data-puuid="">
+      <header class="lc-head"><span class="lc-hidden-tag">Mode streamer</span></header>
+      <section class="lc-row lc-champ">
+        <a class="lc-portrait" href="${ch ? champHref(ch, p.role) : '#/champions'}" title="Builds de ${esc(ch?.name || '')}">${champImg(p.champ, 52)}</a>
+        <div class="lc-txt"><b>${esc(ch?.name || 'Champion')}</b><small>${esc(ROLE_SHORT[p.role] || 'Rôle inconnu')}</small></div>
+        <div class="lc-spells">${spellImg(p.s1, 20)}${spellImg(p.s2, 20)}${runeImg(p.ks, 20)}${runeImg(p.ss, 16, true)}</div>
+      </section>
+      ${hiddenBlock('Ce joueur masque son identité (mode streamer) : rang et historique inaccessibles.')}
+    </article>`;
+  }
   const r = p.ranked?.solo;
   const n = r ? r.w + r.l : 0;
   const ch = champOf(p.champ);
   const name = p.tag ? `<a href="${playerHref(s.platform, p.name, p.tag)}">${esc(p.name)}<span>#${esc(p.tag)}</span></a>` : `<span>${esc(p.name)}</span>`;
   const duo = p.duo ? `<span class="lc-duo" data-duo="${p.duo}" title="${esc('Joue avec ' + (p.with || []).map((w) => w.name).join(', '))}"><svg viewBox="0 0 20 20" width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="3" fill="currentColor"/><circle cx="14" cy="8" r="2.5" fill="currentColor"/><path d="M1.5 17c0-3.3 2.5-5.5 5.5-5.5s5.5 2.2 5.5 5.5M12 12.2c3 0 6.5 1.6 6.5 4.8" fill="none" stroke="currentColor" stroke-width="2"/></svg>${p.duo}</span>` : '';
   return `<article class="lc ${p.team === 100 ? 'blue' : 'red'}${p.puuid === s.puuid ? ' me' : ''}" data-puuid="${esc(p.puuid || '')}">
-    <header class="lc-head">${duo}${name}</header>
+    <header class="lc-head">${duo}${name}${proBadge(p.pro)}</header>
     <section class="lc-row lc-champ">
       <a class="lc-portrait" href="${ch ? champHref(ch, p.role) : '#/champions'}" title="Builds de ${esc(ch?.name || '')}">${champImg(p.champ, 52)}<b class="lc-mlvl" data-slot="mlvl"></b></a>
       <div class="lc-txt" data-slot="champ"><span class="skel stat-skel" style="width:90px"></span><span class="skel stat-skel" style="width:70px;margin-top:6px"></span></div>
@@ -587,7 +602,7 @@ function liveCard(p, s, g) {
       <div class="lc-txt">
         <b>${r ? `${rankText(r)} <span class="muted">${num(r.lp)} LP</span>` : 'Non classé'}</b>
         <small>Solo/Duo</small>
-        ${r ? `<small><span class="${r.w / n >= 0.5 ? 'good' : 'bad'}">${pct(r.w, n)} win</span> (${num(n)} parties)</small>` : ''}
+        ${r ? `<small>${wrBadge(r.w, n, { text: true })} sur ${num(n)} parties</small>` : ''}
       </div>
     </section>
     <section class="lc-row lc-role">
@@ -604,12 +619,20 @@ function liveCard(p, s, g) {
 }
 
 function fillCard(card, p, d) {
+  if (d.hidden) {
+    card.classList.add('hidden-stats');
+    card.querySelectorAll('.lc-activity, .lc-form, .lc-tags').forEach((x) => x.remove());
+    card.querySelector('[data-slot="champ"]').innerHTML = '<b>Stats cachées</b><small class="muted">Historique inaccessible</small>';
+    card.querySelector('[data-slot="mains"]').textContent = 'Rôles principaux : inconnus';
+    card.insertAdjacentHTML('beforeend', hiddenBlock('Profil privé ou historique masqué : Riot ne renvoie aucune partie pour ce joueur.'));
+    return;
+  }
   const m = d.mastery;
   card.querySelector('[data-slot="mlvl"]').textContent = m.lvl ? m.lvl : '';
   const c = d.champ;
   const wr = c.n ? Math.round((c.w / c.n) * 100) : null;
   card.querySelector('[data-slot="champ"]').innerHTML = c.n
-    ? `<b><span class="${wr >= 50 ? 'good' : 'bad'}">${wr}% win</span> <span class="muted">(${c.n} jouée${c.n > 1 ? 's' : ''})</span></b>
+    ? `<b>${wrBadge(c.w, c.n, { text: true })} <span class="muted">(${c.n} jouée${c.n > 1 ? 's' : ''})</span></b>
        <small class="lc-kda"><span class="good">${dec(c.k, 1)}</span> / <span class="bad">${dec(c.d, 1)}</span> / <span class="mid">${dec(c.a, 1)}</span></small>
        <small class="muted">${num(m.pts)} pts de maîtrise</small>`
     : `<b>${m.pts ? `${num(m.pts)} pts` : 'Jamais joué'}</b><small class="muted">${m.pts ? 'de maîtrise' : 'Aucune maîtrise sur ce champion'}</small><small class="muted">Pas de partie classée récente dessus</small>`;

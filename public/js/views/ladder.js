@@ -1,17 +1,16 @@
-// Classement : podium des 3 premiers puis tableau (région ou mondial).
-import { S, api, esc, num, dec, crest, rankText, playerHref, setPlatform, setTitle, loading, errorState, profileImg, champImg, roleIcon, ROLES } from '../core.js';
-
-const regionBadge = (p) => `<span class="rg rg-${esc(p)}">${esc(S.cfg.platforms[p]?.label || p)}</span>`;
+// Classement : podium des 3 premiers puis tableau (région ou mondial), badges pro / streamer.
+import {
+  S, api, esc, num, dec, crest, playerHref, setPlatform, setTitle, loading, errorState, profileImg, champImg, roleIcon, ROLES,
+  wrBadge, wlBar, proBadge, regionBadge,
+} from '../core.js';
 
 function nameHtml(r) {
   if (r.name) {
-    return `<a class="lp-name" href="${playerHref(r.p, r.name, r.tag)}">${esc(r.name)}</a><span class="lp-tag">#${esc(r.tag)}</span>`;
+    return `<a class="lp-name" href="${playerHref(r.p, r.name, r.tag)}">${esc(r.name)}</a>${r.pro ? proBadge(r.pro) : `<span class="lp-tag">#${esc(r.tag)}</span>`}`;
   }
   return r.puuid ? '<span class="skel name-pending"></span>' : '<span class="muted">Joueur masqué</span>';
 }
 const iconHtml = (r, size) => (r.icon != null ? profileImg(r.icon, size) : `<span class="skel ic-skel" style="width:${size}px;height:${size}px"></span>`);
-const wrPct = (r) => (r.w + r.l ? Math.round((r.w / (r.w + r.l)) * 100) : 0);
-const wrClass = (v) => (v >= 60 ? 'hi' : v >= 55 ? 'mid' : 'lo');
 
 function roleHtml(st) {
   if (!st) return '<span class="skel stat-skel"></span>';
@@ -26,17 +25,16 @@ function champsHtml(r, st, size) {
 const kdaHtml = (st) => (!st ? '<span class="skel stat-skel"></span>' : st.kda == null ? '<span class="muted">–</span>' : `<b>${dec(st.kda, 1)}</b>`);
 
 function podium(r) {
-  const wr = wrPct(r);
   return `<article class="pod pod-${r.rank}" data-id="${esc(r.puuid || '')}">
     <div class="pod-top">
       <span class="pod-rank">${r.rank}</span>
       ${regionBadge(r.p)}
-      <span class="pod-ic">${iconHtml(r, 48)}</span>
+      <span class="pod-ic">${iconHtml(r, 50)}</span>
       <span class="pod-who">${nameHtml(r)}</span>
       <span class="pod-role" data-slot="role">${roleHtml(r._st)}</span>
     </div>
     <div class="pod-lp">${crest({ tier: r.tier }, 'md')}<b class="lp-val">${num(r.lp)} LP</b></div>
-    <div class="pod-wl">${r.w} V – ${r.l} D <span class="wr-${wrClass(wr)}">(${wr}%)</span></div>
+    <div class="pod-wl">${wrBadge(r.w, r.w + r.l)}<span>${r.w} V – ${r.l} D</span></div>
     <div class="pod-foot">
       <span><b>${num(r.w + r.l)}</b><small>parties</small></span>
       <span data-slot="champs">${champsHtml(r, r._st, 30)}</span>
@@ -46,18 +44,13 @@ function podium(r) {
 }
 
 function row(r) {
-  const wr = wrPct(r);
-  const n = r.w + r.l;
   return `<div class="lr" role="row" data-id="${esc(r.puuid || '')}">
     <span class="lr-rank" role="cell">${r.rank}</span>
     <span role="cell">${regionBadge(r.p)}</span>
-    <span class="lr-player" role="cell"><span class="lr-ic">${iconHtml(r, 36)}</span><span class="lr-who">${nameHtml(r)}</span></span>
+    <span class="lr-player" role="cell"><span class="lr-ic">${iconHtml(r, 38)}</span><span class="lr-who">${nameHtml(r)}</span></span>
     <span role="cell" data-slot="role">${roleHtml(r._st)}</span>
     <span class="lr-lp" role="cell">${crest({ tier: r.tier }, 'sm')}<b class="lp-val">${num(r.lp)} LP</b></span>
-    <span class="lr-wr" role="cell">
-      <span class="wl-bar"><i style="width:${n ? (r.w / n) * 100 : 0}%"></i><em>${r.w} V – ${r.l} D</em></span>
-      <b class="wr-chip wr-${wrClass(wr)}">${wr}%</b>
-    </span>
+    <span class="lr-wr" role="cell">${wlBar(r.w, r.l)}${wrBadge(r.w, r.w + r.l)}</span>
     <span class="lr-kda" role="cell" data-slot="kda">${kdaHtml(r._st)}</span>
     <span role="cell" data-slot="champs">${champsHtml(r, r._st, 28)}</span>
   </div>`;
@@ -79,13 +72,15 @@ export async function render(el, { p }, ctx) {
   el.innerHTML = `
     <div class="page-head">
       <div>
+        <div class="page-kicker">Classements · ${queue === 'flex' ? 'Flex' : 'Solo/Duo'}</div>
         <h1 class="grad-title">Classement ${esc(label)}</h1>
-        <p>${world ? 'Les Challenger de toutes les régions, triés par LP.' : `Challenger, Grand Maître et Maître de ${esc(S.cfg.platforms[platform].name)}, triés par palier puis par LP.`}</p>
+        <p>${world ? 'Les Challenger de toutes les régions, triés par LP.' : `Challenger, Grand Maître et Maître de ${esc(S.cfg.platforms[platform].name)}, triés par palier puis par LP. Les pros et streamers sont signalés.`}</p>
       </div>
       <div class="row wrap">
         <nav class="seg" aria-label="File">
           <a href="${href('solo', 1)}"${queue === 'solo' ? ' aria-current="page"' : ''}>Solo/Duo</a>
           <a href="${href('flex', 1)}"${queue === 'flex' ? ' aria-current="page"' : ''}>Flex</a>
+          <a href="#/otp${world ? '' : '/' + platform}">OTP</a>
         </nav>
         <label class="sr" for="lRegion">Région</label>
         <select class="select" id="lRegion">${opts}</select>
@@ -121,10 +116,10 @@ export async function render(el, { p }, ctx) {
   box.innerHTML = `
     ${podRows.length ? `<div class="podium">${podRows.map(podium).join('')}</div>` : ''}
     <div class="ltable" role="table" aria-label="Classement">
-      <div class="lr lr-head" role="row"><span role="columnheader"></span><span role="columnheader"></span><span role="columnheader">Joueur</span><span role="columnheader">Rôle</span><span role="columnheader">Rang</span><span role="columnheader">Winrate</span><span role="columnheader">KDA</span><span role="columnheader">Meilleurs champions</span></div>
+      <div class="lr lr-head" role="row"><span role="columnheader">#</span><span role="columnheader"></span><span role="columnheader">Joueur</span><span role="columnheader">Rôle</span><span role="columnheader">Rang</span><span role="columnheader">Victoires</span><span role="columnheader">KDA</span><span role="columnheader">Champions</span></div>
       ${listRows.map(row).join('')}
     </div>
-    <p class="muted small" style="margin-top:10px">${num(data.total)} joueurs. Rôle, KDA et champions calculés sur les ${'5'} dernières parties classées de chaque joueur, chargés progressivement.</p>
+    <p class="muted small" style="margin-top:12px">${num(data.total)} joueurs. Rôle, KDA et champions calculés sur les 5 dernières parties classées de chaque joueur, chargés progressivement.</p>
     <nav class="pager" aria-label="Pages du classement">
       ${data.page > 1 ? `<a class="btn" href="${href(queue, data.page - 1)}">Page précédente</a>` : ''}
       <span class="muted">${data.page} / ${data.pages}</span>
@@ -135,15 +130,16 @@ export async function render(el, { p }, ctx) {
   const nodes = (id) => box.querySelectorAll(`[data-id="${CSS.escape(id)}"]`);
   const ids = data.rows.filter((r) => r.puuid).map((r) => `${r.p}:${r.puuid}`);
 
-  // 1. Identité (noms, icônes, maîtrises).
+  // 1. Identité (noms, icônes, maîtrises, pros et streamers).
   try {
-    const idMap = await api(`/ladder-id?ids=${ids.join(',')}`);
+    const missing = data.rows.filter((r) => r.puuid && (!r.name || r.icon == null)).map((r) => `${r.p}:${r.puuid}`);
+    const idMap = missing.length ? await api(`/ladder-id?ids=${missing.join(',')}`) : {};
     if (!ctx.alive()) return;
     for (const [id, v] of Object.entries(idMap)) {
       const r = Object.assign(byId[id], v);
       nodes(id).forEach((n) => {
         const big = n.classList.contains('pod');
-        n.querySelector(big ? '.pod-ic' : '.lr-ic').innerHTML = iconHtml(r, big ? 48 : 36);
+        n.querySelector(big ? '.pod-ic' : '.lr-ic').innerHTML = iconHtml(r, big ? 50 : 38);
         n.querySelector(big ? '.pod-who' : '.lr-who').innerHTML = nameHtml(r);
         n.querySelector('[data-slot="champs"]').innerHTML = champsHtml(r, r._st, big ? 30 : 28);
       });

@@ -1,5 +1,5 @@
 // Recherche unifiée : joueurs (Riot ID) et champions, au clavier comme à la souris.
-import { S, api, esc, store, norm, champImg, champHref, playerHref, profileImg, parseRiotId, DEFAULT_TAG, CLASSES } from './core.js';
+import { S, api, esc, store, norm, champImg, champHref, playerHref, profileImg, parseRiotId, DEFAULT_TAG, CLASSES, proBadge } from './core.js';
 
 let uid = 0;
 const TIERS_FR = { IRON: 'Fer', BRONZE: 'Bronze', SILVER: 'Argent', GOLD: 'Or', PLATINUM: 'Platine', EMERALD: 'Émeraude', DIAMOND: 'Diamant', MASTER: 'Maître', GRANDMASTER: 'Grand Maître', CHALLENGER: 'Challenger' };
@@ -13,7 +13,7 @@ function results(q, region, remote = []) {
     const k = `${x.p}|${x.name}|${x.tag}`.toLowerCase();
     if (seenPeople.has(k)) return;
     seenPeople.add(k);
-    out.push({ type: 'player', p: x.p, name: x.name, tag: x.tag, icon: x.icon, note: x.note || (x.fav ? 'Favori' : 'Récent') });
+    out.push({ type: 'player', p: x.p, name: x.name, tag: x.tag, icon: x.icon, pro: x.pro || null, note: x.note || (x.fav ? 'Favori' : 'Récent') });
   };
 
   if (!raw) {
@@ -65,7 +65,7 @@ function optionHtml(r, id, active) {
   const region = S.cfg.platforms[r.p]?.label || r.p;
   return `<li role="option" id="${id}" class="omni-opt${active ? ' is-active' : ''}" aria-selected="${active}">
     ${r.icon != null ? profileImg(r.icon, 32, true) : '<span class="omni-person" aria-hidden="true"></span>'}
-    <span class="omni-main"><b>${esc(r.name)}<span class="muted">#${esc(r.tag)}</span></b><small>${esc(r.note)}</small></span>
+    <span class="omni-main"><b>${esc(r.name)}<span class="muted">#${esc(r.tag)}</span></b><small>${r.pro ? proBadge(r.pro) + ' ' : ''}${esc(r.note)}</small></span>
     <span class="omni-kind">${esc(region)}</span>
   </li>`;
 }

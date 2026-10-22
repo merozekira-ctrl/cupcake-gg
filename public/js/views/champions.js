@@ -2,7 +2,7 @@
 import {
   S, api, esc, DEMO_NOTE, num, dec, pct, kdaText, kdaRatio, ago, champImg, champOf, champByKey, champHref, itemImg, spellImg,
   runeImg, abilityImg, passiveImg, splashUrl, loadingUrl, roleIcon, ROLES, ROLE_ORDER, CLASSES, rich, crest, rankText,
-  regionOptions, setPlatform, setTitle, loading, errorState, store, toast, playerHref, norm,
+  regionOptions, setPlatform, setTitle, loading, errorState, store, toast, playerHref, norm, wrBadge, proBadge, roleBar, patchLabel,
 } from '../core.js';
 
 const cmpPatch = (a, b) => {
@@ -135,11 +135,11 @@ function sampleBoxHtml(meta, patch, region) {
   }
   if (!total) {
     return `<div><strong>Pas encore d’échantillon pour ${esc(region)} sur ce patch.</strong>
-      <p class="muted small" style="margin-top:4px">cupcake.gg lit les parties classées Solo/Duo du patch ${esc(meta?.current || '')} jouées par les Challenger, Grand Maître et pros suivis, avec leur chronologie : ordre des objets, objets de départ, compétences. Il en tire tier list, builds, runes et matchups. Avec une clé de développement, 150 parties prennent environ 9 minutes.</p></div>
+      <p class="muted small" style="margin-top:4px">cupcake.gg lit les parties classées Solo/Duo du patch ${esc(patchLabel(meta?.current || ''))} jouées par les Challenger, Grand Maître et pros suivis, avec leur chronologie : ordre des objets, objets de départ, compétences. Il en tire tier list, builds, runes et matchups. Avec une clé de développement, 150 parties prennent environ 9 minutes.</p></div>
       <div class="row wrap"><button class="btn btn-primary" type="button" data-start="150">Analyser 150 parties</button><button class="btn" type="button" data-start="400">Analyser 400 parties</button></div>${err}`;
   }
   return `<div class="row wrap">
-      <p class="grow">Échantillon : <strong>${num(total)} parties</strong> Challenger, Grand Maître et pros sur ${esc(region)}, patch ${esc(patch)}.<span class="muted small"> Mis à jour ${esc(ago(meta.updated))}.</span></p>
+      <p class="grow">Échantillon : <strong>${num(total)} parties</strong> Challenger, Grand Maître et pros sur ${esc(region)}, patch ${esc(patchLabel(patch))}.<span class="muted small"> Mis à jour ${esc(ago(meta.updated))}.</span></p>
       <button class="btn btn-sm" type="button" data-start="150">Ajouter 150 parties</button>
     </div>
     ${total < 300 ? '<p class="muted small">Moins de 300 parties : les écarts entre champions peu joués restent fragiles. Ajoute des parties pour affiner.</p>' : ''}${err}`;
@@ -147,16 +147,17 @@ function sampleBoxHtml(meta, patch, region) {
 
 function prosHtml(pros, p) {
   const mine = pros.filter((x) => x.platform === p);
-  return `<details class="panel pros-box"${mine.length ? '' : ''}>
-    <summary><span><strong>Pros suivis</strong> <span class="muted">${mine.length} sur ${esc(S.cfg.platforms[p].label)}</span></span><span class="muted small">Leurs parties sont lues en premier et signalées « Pro » dans les builds.</span></summary>
+  return `<details class="panel pros-box">
+    <summary><span><strong>Pros et streamers suivis</strong> <span class="muted">${mine.length} sur ${esc(S.cfg.platforms[p].label)}</span></span><span class="muted small">Leurs parties sont lues en premier et leur badge s’affiche partout sur le site. Les pseudos « ttv … » sont reconnus automatiquement.</span></summary>
     <div class="pros-in">
-      ${mine.length ? `<ul class="pros-list">${mine.map((x) => `<li><span class="pro-badge">${esc(x.team || 'Pro')}</span><b>${esc(x.label)}</b><span class="muted small">${esc(x.riotId)}</span><button class="x-btn" type="button" data-unpro="${esc(x.puuid)}" aria-label="Ne plus suivre ${esc(x.label)}">×</button></li>`).join('')}</ul>` : '<p class="muted small">Aucun pro suivi pour cette région.</p>'}
-      <form class="pro-form" id="proForm">
+      ${mine.length ? `<ul class="pros-list">${mine.map((x) => `<li>${proBadge({ kind: x.kind || 'pro', team: x.team, twitch: x.twitch, label: x.label })}<b>${esc(x.label)}</b><span class="muted small">${esc(x.riotId)}</span>${S.cfg.demo ? '' : `<button class="x-btn" type="button" data-unpro="${esc(x.puuid)}" aria-label="Ne plus suivre ${esc(x.label)}">×</button>`}</li>`).join('')}</ul>` : '<p class="muted small">Aucun pro ni streamer suivi pour cette région.</p>'}
+      ${S.cfg.demo ? '<p class="muted small">Ajout désactivé sur la version de démonstration.</p>' : `<form class="pro-form" id="proForm">
         <label><span>Riot ID du compte</span><input class="field" name="riotId" placeholder="Nom#TAG" required></label>
-        <label><span>Nom affiché</span><input class="field" name="label" placeholder="Pseudo pro" maxlength="24"></label>
-        <label><span>Équipe</span><input class="field" name="team" placeholder="Sigle" maxlength="12"></label>
+        <label><span>Nom affiché</span><input class="field" name="label" placeholder="Pseudo" maxlength="24"></label>
+        <label><span>Type</span><select class="select" name="kind"><option value="pro">Pro</option><option value="streamer">Streamer</option></select></label>
+        <label><span>Équipe ou chaîne Twitch</span><input class="field" name="extra" placeholder="KC ou nom de chaîne" maxlength="25"></label>
         <button class="btn" type="submit">Suivre</button>
-      </form>
+      </form>`}
     </div>
   </details>`;
 }
@@ -171,9 +172,8 @@ function drawTier(body, ctx) {
 
   body.innerHTML = `
     <div class="toolbar">
-      <div class="chips" role="group" aria-label="Rôle">
-        ${ROLE_ORDER.map((r) => `<button class="chip" type="button" data-role="${r}" aria-pressed="${r === role}">${roleIcon(r, false)}${ROLES[r]}</button>`).join('')}
-      </div>
+      ${roleBar(role, { all: false })}
+      <strong id="roleName" style="font-family:var(--font-display);font-size:17px">${ROLES[role]}</strong>
       <span class="grow"></span>
       <label class="sr" for="tRegion">Région</label>
       <select class="select" id="tRegion">${regionOptions(p)}</select>
@@ -208,6 +208,7 @@ function drawTier(body, ctx) {
       role = b.dataset.role;
       store.set('tierRole', role);
       body.querySelectorAll('[data-role]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+      body.querySelector('#roleName').textContent = ROLES[role];
       paintTable();
     })
   );
@@ -229,7 +230,7 @@ function drawTier(body, ctx) {
     if (!patch || !patches.includes(patch)) patch = patches.includes(meta.current) ? meta.current : patches[0] || null;
     patchSel.disabled = !patches.length;
     patchSel.innerHTML = patches.length
-      ? patches.map((x) => `<option value="${x}"${x === patch ? ' selected' : ''}>Patch ${x}${x === meta.current ? ' (actuel)' : ''}</option>`).join('')
+      ? patches.map((x) => `<option value="${x}"${x === patch ? ' selected' : ''}>Patch ${patchLabel(x)}${x === meta.current ? ' (actuel)' : ''}</option>`).join('')
       : '<option>Patch</option>';
     sample.innerHTML = sampleBoxHtml(meta, patch, region);
     if (S.cfg.demo) sample.querySelectorAll('[data-start], #stopMeta').forEach((b) => b.remove());
@@ -259,18 +260,19 @@ function drawTier(body, ctx) {
         }
       })
     );
-    box.querySelector('#proForm').addEventListener('submit', async (e) => {
+    box.querySelector('#proForm')?.addEventListener('submit', async (e) => {
       e.preventDefault();
       const f = new FormData(e.currentTarget);
       const btn = e.currentTarget.querySelector('button');
       btn.disabled = true;
+      const streamer = f.get('kind') === 'streamer';
       try {
         S.meta[p].pros = await api('/pros', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ riotId: f.get('riotId'), label: f.get('label'), team: f.get('team'), platform: p }),
+          body: JSON.stringify({ riotId: f.get('riotId'), label: f.get('label'), kind: f.get('kind'), team: streamer ? '' : f.get('extra'), twitch: streamer ? f.get('extra') : '', platform: p }),
         });
-        toast('Pro ajouté. Ses parties seront lues en premier à la prochaine analyse.');
+        toast(streamer ? 'Streamer ajouté : son badge s’affiche désormais sur le site.' : 'Pro ajouté : ses parties seront lues en premier à la prochaine analyse.');
         paintPros();
         box.querySelector('details').open = true;
       } catch (err) {
@@ -290,20 +292,21 @@ function drawTier(body, ctx) {
     const rows = tierRows(P, role).filter((r) => !search || norm(r.champ.name).includes(search));
     const maxPr = Math.max(0.01, ...rows.map((r) => r.pr));
     table.innerHTML = rows.length
-      ? `<div class="panel scroll-x"><table class="table tier-table">
-        <caption class="sr">Tier list ${ROLES[role]}, patch ${esc(patch)}</caption>
-        <thead><tr><th scope="col" class="num">#</th><th scope="col">Champion</th><th scope="col">Tier</th><th scope="col" class="num">Victoires</th><th scope="col">Sélection</th><th scope="col" class="num">Bannissement</th><th scope="col" class="num">Parties</th><th scope="col" class="num">KDA</th></tr></thead>
+      ? `<div class="panel scroll-x tier-wrap"><table class="table tier-table">
+        <caption class="sr">Tier list ${ROLES[role]}, patch ${esc(patchLabel(patch))}</caption>
+        <thead><tr><th scope="col" class="num">#</th><th scope="col">Champion</th><th scope="col">Tier</th><th scope="col" class="num">Winrate</th><th scope="col">Pick rate</th><th scope="col" class="num">Ban rate</th><th scope="col" class="num">Parties</th><th scope="col" class="num">KDA</th><th scope="col"><span class="sr">Matchups</span></th></tr></thead>
         <tbody>${rows
           .map(
             (r, i) => `<tr class="clickable${r.tier === '?' ? ' rare' : ''}" data-href="${champHref(r.champ, role)}">
-            <td class="num muted">${i + 1}</td>
-            <td><div class="cell-player">${champImg(r.id, 36)}<div class="pn"><a href="${champHref(r.champ, role)}">${esc(r.champ.name)}</a></div></div></td>
+            <td class="num"><span class="rank-n">${i + 1}</span></td>
+            <td><div class="cell-player">${champImg(r.id, 40)}<div class="pn"><a href="${champHref(r.champ, role)}">${esc(r.champ.name)}</a><small>${esc((r.champ.tags || []).map((t) => CLASSES[t] || t).join(', '))}</small></div></div></td>
             <td><span class="tier tier-${r.tier === '?' ? 'D' : r.tier}" title="${r.tier === '?' ? 'Moins de 3 parties : pas assez de données' : 'Tier ' + r.tier}">${r.tier}</span></td>
-            <td class="num"><b class="${r.wr >= 0.5 ? 'good' : 'bad'}">${pct(r.c.w, r.c.g, 1)}</b></td>
-            <td style="min-width:140px"><div class="row"><span class="num" style="width:52px">${pct(r.pr, 1, 1)}</span><div class="bar grow"><i style="width:${(r.pr / maxPr) * 100}%"></i></div></div></td>
+            <td class="num">${wrBadge(r.c.w, r.c.g, { d: 1 })}</td>
+            <td><div class="pr-cell"><span class="num">${pct(r.pr, 1, 1)}</span><div class="bar"><i style="width:${(r.pr / maxPr) * 100}%"></i></div></div></td>
             <td class="num">${pct(r.br, 1, 1)}</td>
             <td class="num">${num(r.c.g)}</td>
             <td class="num">${dec(r.kda, 2)}</td>
+            <td class="num"><a class="mu-link" href="#/matchups?champ=${esc(r.champ.id)}&role=${role}" title="Matchups de ${esc(r.champ.name)}">Matchups</a></td>
           </tr>`
           )
           .join('')}</tbody></table></div>`
@@ -478,6 +481,7 @@ function augmentsHtml(R) {
 const stripRich = (t) => String(t || '').replace(/[\u0001\u0002]/g, '');
 
 function buildTab(c, R, cm, role, mode = 'sr') {
+  MU_CTX = { champ: c.id, role };
   const total = R.g;
   const tlGames = R.tl || 0;
   const cores = top(R.core, 5);
@@ -524,7 +528,7 @@ function buildTab(c, R, cm, role, mode = 'sr') {
 
       ${mode === 'sr' ? '' : augmentsHtml(R)}
       ${mode !== 'sr' ? '' : `<section class="panel" aria-labelledby="h-mu">
-        <div class="panel-title"><h2 id="h-mu">Matchups en ${esc(ROLES[role] || role).toLowerCase()}</h2><span class="muted small">Contre l’adversaire direct, 2 parties minimum</span></div>
+        <div class="panel-title"><h2 id="h-mu">Matchups en ${esc(ROLES[role] || role).toLowerCase()}</h2><a href="#/matchups?champ=${esc(c.id)}&role=${esc(role)}">Tous les matchups de ${esc(c.name)}</a></div>
         ${vs.length ? `<div class="mu-grid">
           <div><h3 class="good">Favorables</h3>${best.map((x) => muRow(x)).join('') || '<p class="muted small">Aucun pour l’instant.</p>'}</div>
           <div><h3 class="bad">Difficiles</h3>${worst.map((x) => muRow(x)).join('') || '<p class="muted small">Aucun pour l’instant.</p>'}</div>
@@ -565,16 +569,18 @@ function buildTab(c, R, cm, role, mode = 'sr') {
   </div>`;
 }
 
+let MU_CTX = null;
 function muRow(x) {
   const ch = champOf(x.id);
-  return `<a class="mu" href="${ch ? champHref(ch) : '#/champions'}">${champImg(x.id, 30)}<span class="grow">${esc(ch?.name || '?')}</span><b class="${x.wr >= 0.5 ? 'good' : 'bad'}">${pct(x.w, x.n)}</b><small class="muted">${x.n} p.</small></a>`;
+  const href = MU_CTX && ch ? `#/matchups?champ=${MU_CTX.champ}&vs=${ch.id}&role=${MU_CTX.role}` : ch ? champHref(ch) : '#/champions';
+  return `<a class="mu" href="${href}">${champImg(x.id, 30)}<span class="grow">${esc(ch?.name || '?')}</span>${wrBadge(x.w, x.n)}<small class="muted">${x.n} p.</small></a>`;
 }
 
 function playersTab(R, cm, filter, limit = 15) {
   const pros = Object.fromEntries((cm.pros || []).map((x) => [x.puuid, x]));
   let list = R.recent || [];
   if (filter === 'win') list = list.filter((g) => g.w);
-  if (filter === 'pro') list = list.filter((g) => pros[g.pu]);
+  if (filter === 'pro') list = list.filter((g) => pros[g.pu] || g.pro);
   const more = list.length > limit;
   const rows = list
     .slice(0, limit)
@@ -583,7 +589,7 @@ function playersTab(R, cm, filter, limit = 15) {
       const items = g.ord?.length ? [...g.ord] : g.it.slice(0, 6).filter(Boolean);
       const who = pro
         ? `<span class="pro-badge">${esc(pro.team || 'Pro')}</span><span class="pl-name"><a href="${playerHref(pro.platform, ...pro.riotId.split('#'))}">${esc(pro.label)}</a><small>${esc(pro.riotId)}</small></span>`
-        : `${g.tier ? crest({ tier: g.tier }, 'sm') : ''}<span class="pl-name">${g.tg ? `<a href="${playerHref(S.platform, g.n, g.tg)}">${esc(g.n)}</a>` : `<span>${esc(g.n || 'Joueur')}</span>`}<small>${g.tier ? `${esc(rankText({ tier: g.tier }))}${g.lp != null ? ` ${num(g.lp)} LP` : ''}` : ''}</small></span>`;
+        : `${g.tier ? crest({ tier: g.tier }, 'sm') : ''}<span class="pl-name">${g.tg ? `<a href="${playerHref(S.platform, g.n, g.tg)}">${esc(g.n)}</a>` : `<span>${esc(g.n || 'Joueur')}</span>`}${g.pro ? proBadge(g.pro) : `<small>${g.tier ? `${esc(rankText({ tier: g.tier }))}${g.lp != null ? ` ${num(g.lp)} LP` : ''}` : ''}</small>`}</span>`;
       return `<div class="pb ${g.w ? 'win' : 'loss'}">
         <div class="pb-who">${who}</div>
         <div class="pb-vs">${g.vs ? `<span class="muted small">contre</span>${champImg(g.vs, 28)}` : ''}</div>
@@ -598,11 +604,11 @@ function playersTab(R, cm, filter, limit = 15) {
       <div class="chips" role="group" aria-label="Filtrer les parties">
         <button class="chip" type="button" data-pf="all" aria-pressed="${filter === 'all'}">Toutes</button>
         <button class="chip" type="button" data-pf="win" aria-pressed="${filter === 'win'}">Victoires</button>
-        <button class="chip" type="button" data-pf="pro" aria-pressed="${filter === 'pro'}">Pros suivis</button>
+        <button class="chip" type="button" data-pf="pro" aria-pressed="${filter === 'pro'}">Pros et streamers</button>
       </div>
       <p class="muted small grow">Dernières parties de l’échantillon, objets dans l’ordre d’achat (bottes en premier).</p>
     </div>
-    ${rows ? `<div class="pb-list">${rows}</div>${more ? `<div class="more"><button class="btn btn-block" type="button" id="pbMore">Afficher ${Math.min(15, list.length - limit)} parties de plus</button></div>` : ''}` : `<div class="panel state"><p>${filter === 'pro' ? 'Aucune partie de pro suivi. Ajoute des pros depuis la tier list.' : 'Aucune partie pour ce filtre.'}</p></div>`}`;
+    ${rows ? `<div class="pb-list">${rows}</div>${more ? `<div class="more"><button class="btn btn-block" type="button" id="pbMore">Afficher ${Math.min(15, list.length - limit)} parties de plus</button></div>` : ''}` : `<div class="panel state"><p>${filter === 'pro' ? 'Aucune partie de pro ou de streamer reconnu dans l’échantillon.' : 'Aucune partie pour ce filtre.'}</p></div>`}`;
 }
 
 const STATS = [
@@ -748,12 +754,12 @@ export async function renderChampion(el, { id }, ctx) {
           <div>
             <h1>${esc(full.name)}</h1>
             <p class="title">${esc(full.title)}</p>
-            <div class="chips">${(full.tags || []).map((t) => `<span class="tag">${esc(CLASSES[t] || t)}</span>`).join('')}${cm?.patch ? `<span class="tag tag-accent">Patch ${esc(cm.patch)}${cm.patch === cm.current ? '' : ' (précédent)'}</span>` : ''}</div>
+            <div class="chips">${(full.tags || []).map((t) => `<span class="tag">${esc(CLASSES[t] || t)}</span>`).join('')}${cm?.patch ? `<span class="tag tag-accent">Patch ${esc(patchLabel(cm.patch))}${cm.patch === cm.current ? '' : ' (précédent)'}</span>` : ''}<a class="tag" href="#/matchups?champ=${esc(c.id)}${role && role !== 'ALL' ? '&role=' + role : ''}" style="text-decoration:none">Matchups</a></div>
           </div>
         </div>
         ${R ? `<div class="hero-stats">
           ${tierRow ? `<div class="hs"><small>Tier</small><span class="tier tier-${tierRow.tier === '?' ? 'D' : tierRow.tier}">${tierRow.tier}</span></div>` : ''}
-          ${stat('Victoires', pct(R.w, R.g, 1), wrClass(R.w, R.g))}
+          <div class="hs"><small>Winrate</small>${wrBadge(R.w, R.g, { lg: true, d: 1 })}</div>
           ${stat('Sélection', pct(R.g, cm.games, 1))}
           ${mode === 'arena' ? stat('Top 1', pct(R.top1 || 0, R.g, 1)) + stat('Place moyenne', dec((R.place || 0) / R.g, 2)) : stat('Bannissement', pct(cm.bans, cm.games, 1))}
           ${stat('Parties', num(R.g))}

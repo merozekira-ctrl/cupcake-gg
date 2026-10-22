@@ -182,18 +182,71 @@ export function crest(r, size = 'md') {
 export const ROLES = { TOP: 'Haut', JUNGLE: 'Jungle', MIDDLE: 'Milieu', BOTTOM: 'Tireur', UTILITY: 'Support' };
 export const ROLE_ORDER = ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY'];
 
-export function roleIcon(pos, label = true) {
-  const frame = '<rect x="1.5" y="1.5" width="13" height="13" rx="2.5" fill="none" stroke="currentColor" stroke-opacity=".35" stroke-width="1.2"/>';
-  const paths = {
-    TOP: '<path d="M3.5 12.5v-9h9" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>',
-    JUNGLE: '<path d="M8 3.2 11.2 8 8 12.8 4.8 8Z" fill="currentColor"/>',
-    MIDDLE: '<path d="m3.8 12.2 8.4-8.4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>',
-    BOTTOM: '<path d="M3.5 12.5h9v-9" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>',
-    UTILITY: '<path d="M8 3.2 12 4.8v3c0 2.4-1.7 4-4 5-2.3-1-4-2.6-4-5v-3Z" fill="currentColor"/>',
-  };
-  if (!paths[pos]) return '';
-  const a11y = label ? `role="img" aria-label="${ROLES[pos]}"` : 'aria-hidden="true"';
-  return `<svg class="role-ic" viewBox="0 0 16 16" ${a11y}>${frame}${paths[pos]}</svg>`;
+// Icônes de position (deux tons : .ri-a = partie mise en avant, .ri-b = cadre).
+const ROLE_PATHS = {
+  TOP: '<path class="ri-b" d="M22 4.6V22H4.6l3.8-3.8h9.8V8.4Z"/><path class="ri-b" d="M9.6 9.6h4.8v4.8H9.6z"/><path class="ri-a" d="M2 2h18.4l-3.8 3.8H5.8v10.8L2 20.4Z"/>',
+  JUNGLE: '<path class="ri-a" d="M10.6 22.4C7 19 3.4 14.6 1.6 9.6c3.2 2 6.8 5 9.6 9Z"/><path class="ri-a" d="M11 22C10.6 15.4 9 8 6.2 1.4c4.2 4.2 6.4 10.2 6.6 17Z"/><path class="ri-a" d="M12.2 19.6c.2-6.4 1.6-12.4 4.2-17.8.6 5.8-.4 11.8-3 17Z"/><path class="ri-a" d="M12.6 21.6c2-5.2 5.4-9.6 9.8-12.4-1.4 5.2-5 9.4-9 12.8Z"/>',
+  MIDDLE: '<path class="ri-b" d="M2 2h14.6l-3.8 3.8H5.8v7L2 16.6Z"/><path class="ri-b" d="M22 22H7.4l3.8-3.8h7v-7L22 7.4Z"/><path class="ri-a" d="M2 18.6 18.6 2H22v3.4L5.4 22H2Z"/>',
+  BOTTOM: '<path class="ri-b" d="M2 19.4V2h17.4l-3.8 3.8H5.8v9.8Z"/><path class="ri-b" d="M9.6 9.6h4.8v4.8H9.6z"/><path class="ri-a" d="M22 22H3.6l3.8-3.8h10.8V7.4L22 3.6Z"/>',
+  UTILITY: '<path class="ri-a" d="M7.4 1.8h9.2L15 5.4l-3 2.8-3-2.8Z"/><path class="ri-a" d="M10.2 9.4h3.6l1.6 3.6-1.2 5.6-2.2 4-2.2-4-1.2-5.6Z"/><path class="ri-a" d="M9.2 8.6C6.6 7.6 3.6 7.2.6 7.6c1 1.6 2.6 2.6 4.4 3l-.8 2c1.6 0 3.2-.8 4.4-1.8Z"/><path class="ri-a" d="M14.8 8.6c2.6-1 5.6-1.4 8.6-1-1 1.6-2.6 2.6-4.4 3l.8 2c-1.6 0-3.2-.8-4.4-1.8Z"/>',
+  ALL: '<path class="ri-all" d="M12 1.5c.8 4.6 2.4 8 7.4 9.2v2.6c-5 1.2-6.6 4.6-7.4 9.2h-.1C11.1 17.9 9.5 14.5 4.5 13.3v-2.6c5-1.2 6.6-4.6 7.4-9.2Z"/>',
+};
+export function roleIcon(pos, label = true, cls = '') {
+  if (!ROLE_PATHS[pos]) return '';
+  const a11y = label ? `role="img" aria-label="${pos === 'ALL' ? 'Tous les rôles' : ROLES[pos]}"` : 'aria-hidden="true"';
+  return `<svg class="role-ic ${cls}" viewBox="0 0 24 24" ${a11y}>${ROLE_PATHS[pos]}</svg>`;
+}
+// Barre de filtres : icônes seules (Tous + 5 rôles).
+export function roleBar(current, { all = true, mini = false, attr = 'data-role' } = {}) {
+  const keys = [...(all ? ['ALL'] : []), ...ROLE_ORDER];
+  return `<div class="rolebar${mini ? ' mini' : ''}" role="group" aria-label="Rôle">${keys
+    .map((r) => `<button type="button" ${attr}="${r}" aria-pressed="${(current || 'ALL') === r}" title="${r === 'ALL' ? 'Tous les rôles' : ROLES[r]}">${roleIcon(r, false)}<span class="sr">${r === 'ALL' ? 'Tous les rôles' : ROLES[r]}</span></button>`)
+    .join('')}</div>`;
+}
+
+/* ---------- Winrate, pros, régions ---------- */
+
+// Échelle cupcake : <46 % rouge, <50 % orange, <53 % neutre, <57 % menthe, <62 % cyan, sinon rose.
+export function wrTier(ratio) {
+  const p = ratio * 100;
+  return p < 46 ? 0 : p < 50 ? 1 : p < 53 ? 2 : p < 57 ? 3 : p < 62 ? 4 : 5;
+}
+export function wrBadge(w, n, { text = false, lg = false, d = 0 } = {}) {
+  if (!n) return '<span class="muted">–</span>';
+  const r = w / n;
+  return `<b class="wr wr-t${wrTier(r)}${text ? ' wr-text' : ''}${lg ? ' wr-lg' : ''}" title="${w} victoire${w > 1 ? 's' : ''} sur ${n}">${dec(r * 100, d)} %</b>`;
+}
+export function wlBar(w, l) {
+  const n = w + l;
+  const r = n ? w / n : 0;
+  return `<span class="wlbar" style="--c:var(--wr${wrTier(r)})"><i style="width:${(r * 100).toFixed(1)}%"></i><span><b class="w">${w} V</b><b class="l">${l} D</b></span></span>`;
+}
+const TWITCH = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4.3 2 3 5.3v13.4h4.6V21h2.6l2.3-2.3h3.6l4.9-4.9V2Zm15 11-2.8 2.8H12l-2.4 2.4v-2.4H5.8V3.8h13.5Zm-3.3-6.4v4.8h-1.8V6.6Zm-4.8 0v4.8H9.4V6.6Z"/></svg>';
+const LAUREL = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2 9.5 7.6 3.4 8.2l4.6 4.1L6.7 18.3 12 15.2l5.3 3.1-1.3-6 4.6-4.1-6.1-.6Z"/></svg>';
+// Badge pro (sigle d'équipe) ou streamer (lien Twitch quand la chaîne est connue).
+export function proBadge(pro, { link = true } = {}) {
+  if (!pro) return '';
+  if (pro.kind === 'streamer') {
+    const t = pro.twitch && link ? ` href="https://www.twitch.tv/${esc(pro.twitch)}" target="_blank" rel="noopener noreferrer"` : '';
+    const title = pro.twitch ? `Chaîne Twitch : ${pro.twitch}${pro.guess ? ' (déduite du pseudo)' : ''}` : 'Streamer';
+    return `<${t ? 'a' : 'span'} class="who who-stream"${t} title="${esc(title)}">${TWITCH}Streamer</${t ? 'a' : 'span'}>`;
+  }
+  return `<span class="who who-pro" title="${esc(pro.label || 'Joueur professionnel')}${pro.team ? ' · ' + esc(pro.team) : ''}">${pro.team ? `<b>${esc(pro.team)}</b>` : LAUREL}Pro</span>`;
+}
+export const regionBadge = (p) => `<span class="rg rg-${esc(p)}">${esc(S.cfg.platforms[p]?.label || p)}</span>`;
+
+// Data Dragon 16.21 = patch officiel 26.21.
+export function patchLabel(v) {
+  const [a, b] = String(v || '').split('.').map(Number);
+  if (!Number.isFinite(a)) return '';
+  return a >= 16 ? `${a + 10}.${b}` : `${a}.${b}`;
+}
+
+// Note sur 100 en anneau.
+export function scoreRing(v) {
+  const n = Math.max(0, Math.min(100, Math.round(v || 0)));
+  const c = n >= 80 ? '' : n >= 65 ? 'var(--wr4)' : n >= 50 ? 'var(--wr3)' : n >= 35 ? 'var(--wr1)' : 'var(--wr0)';
+  return `<span class="score${n >= 80 ? ' s-hi' : ''}" style="--p:${n};${c ? `--c:${c}` : ''}" title="Note de la partie sur 100"><b>${n}</b></span>`;
 }
 
 // Tag attribué par défaut à la création du compte, selon la région.

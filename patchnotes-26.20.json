@@ -1,0 +1,336 @@
+{
+ "patch": "26.20",
+ "title": "Notes du patch 26.20",
+ "date": "2026-10-06T18:00:00.000Z",
+ "url": "https://www.leagueoflegends.com/fr-fr/news/game-updates/league-of-legends-patch-26-20-notes/",
+ "image": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/news_live/9b02404e478143a3313dbd374e938ced7d4f3826-1920x1080.jpg",
+ "source": "seed",
+ "fetched": 0,
+ "highlights": [
+  "Ceinture-roquette Hextech et Hexplaque expérimentale retouchées.",
+  "Le tableau des scores ne montre plus les compteurs de cumul de plusieurs objets.",
+  "Buffs pour Lucian, Vayne, Swain et Smolder."
+ ],
+ "sections": [
+  {
+   "title": "Champions",
+   "entries": [
+    {
+     "name": "Ambessa",
+     "champ": "Ambessa",
+     "kind": "nerf",
+     "groups": [
+      {
+       "title": "Passif",
+       "lines": [
+        "Dégâts : 5 à 30 (+25 % DA bonus) → 5 à 25 (+20 % DA bonus)"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Ashe",
+     "champ": "Ashe",
+     "kind": "nerf",
+     "groups": [
+      {
+       "title": "Statistiques de base",
+       "lines": [
+        "Dégâts d'attaque par niveau : 3,5 → 3"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Cassiopeia",
+     "champ": "Cassiopeia",
+     "kind": "nerf",
+     "groups": [
+      {
+       "title": "Statistiques de base",
+       "lines": [
+        "PV de base : 630 → 610",
+        "Mana de base : 480 → 450"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Diana",
+     "champ": "Diana",
+     "kind": "buff",
+     "groups": [
+      {
+       "title": "W",
+       "lines": [
+        "Bouclier, ratio de PV bonus : 11 % → 14 %"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Kennen",
+     "champ": "Kennen",
+     "kind": "buff",
+     "groups": [
+      {
+       "title": "E",
+       "lines": [
+        "Vitesse d'attaque bonus : 40/50/60/70/80 % → 50/60/70/80/90 %"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Kindred",
+     "champ": "Kindred",
+     "kind": "adjust",
+     "groups": [
+      {
+       "title": "W",
+       "lines": [
+        "Dégâts aux monstres : 150 % → 165 %"
+       ]
+      },
+      {
+       "title": "E",
+       "lines": [
+        "Durée du ralentissement : 1 s → 1,5 s",
+        "Ne peut plus cibler les petits monstres"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "K'Sante",
+     "champ": "KSante",
+     "kind": "nerf",
+     "groups": [
+      {
+       "title": "W",
+       "lines": [
+        "Coût en mana : 40 à 60 → 45 à 65",
+        "Réduction des dégâts (base / All-Out) : 30 / 75 % → 25 / 70 %"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Lillia",
+     "champ": "Lillia",
+     "kind": "buff",
+     "groups": [
+      {
+       "title": "R",
+       "lines": [
+        "Durée du sommeil : 2,5 s → 2,5 / 2,75 / 3 s"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Lucian",
+     "champ": "Lucian",
+     "kind": "buff",
+     "groups": [
+      {
+       "title": "Statistiques de base",
+       "lines": [
+        "Dégâts d'attaque par niveau : 2,5 → 2,9"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Mordekaiser",
+     "champ": "Mordekaiser",
+     "kind": "buff",
+     "groups": [
+      {
+       "title": "Q",
+       "lines": [
+        "Bonus de dégâts par niveau (10 à 20) : +5 → +7"
+       ]
+      },
+      {
+       "title": "R",
+       "lines": [
+        "Délai de récupération : 140/120/100 s → 120/110/100 s"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Neeko",
+     "champ": "Neeko",
+     "kind": "buff",
+     "groups": [
+      {
+       "title": "E",
+       "lines": [
+        "Dégâts de base : 70/105/140/175/210 → 80/115/150/185/220",
+        "Immobilisation renforcée : 1,8 à 3 s → 2 à 3 s"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Smolder",
+     "champ": "Smolder",
+     "kind": "buff",
+     "groups": [
+      {
+       "title": "Passif",
+       "lines": [
+        "Dégâts magiques bonus : 25 à 55 % → 25 à 60 % des cumuls"
+       ]
+      },
+      {
+       "title": "R",
+       "lines": [
+        "Soins : 100/135/170 (+50 % DA bonus) → 100/175/250 (+75 % DA bonus) (+75 % PA)"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Swain",
+     "champ": "Swain",
+     "kind": "buff",
+     "groups": [
+      {
+       "title": "Statistiques de base",
+       "lines": [
+        "Résistance magique : 31 → 34",
+        "Armure : 25 → 23"
+       ]
+      },
+      {
+       "title": "W",
+       "lines": [
+        "Dégâts : 70/105/140/175/210 → 70/115/160/205/250",
+        "Délai de récupération : 22/21/20/19/18 s → 20/19/18/17/16 s"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Tahm Kench",
+     "champ": "TahmKench",
+     "kind": "buff",
+     "groups": [
+      {
+       "title": "Q",
+       "lines": [
+        "Soins de base : 10 à 25 → 10/20/30/40/50"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Vayne",
+     "champ": "Vayne",
+     "kind": "buff",
+     "groups": [
+      {
+       "title": "Statistiques de base",
+       "lines": [
+        "Régénération des PV : 4 (+0,5 par niveau) → 5,5 (+0,4 par niveau)"
+       ]
+      },
+      {
+       "title": "Q",
+       "lines": [
+        "Coût en mana : 46/42/38/34/30 → 30"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Yunara",
+     "champ": "Yunara",
+     "kind": "nerf",
+     "groups": [
+      {
+       "title": "Q",
+       "lines": [
+        "Dégâts à l'impact (passif et actif) : 5 à 25 (+20 % PA) → 3 à 23 (+20 % PA)"
+       ]
+      },
+      {
+       "title": "W",
+       "lines": [
+        "Le ralentissement ne se cumule plus avec les autres ralentissements"
+       ]
+      }
+     ]
+    }
+   ],
+   "lines": []
+  },
+  {
+   "title": "Objets",
+   "entries": [
+    {
+     "name": "Hexplaque expérimentale",
+     "item": 3073,
+     "kind": "nerf",
+     "groups": [
+      {
+       "title": "",
+       "lines": [
+        "Efficacité à distance : 70 % → 50 % (35 % → 25 % de vitesse d'attaque, 14 % → 10 % de vitesse de déplacement)"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Ceinture-roquette Hextech",
+     "item": 3152,
+     "kind": "adjust",
+     "groups": [
+      {
+       "title": "",
+       "lines": [
+        "Accélération de compétence : 20 → 10",
+        "Dégâts de l'actif : 100 (+10 % PA) → 135 (+15 % PA)"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Ouragan de Runaan",
+     "item": 3085,
+     "kind": "nerf",
+     "groups": [
+      {
+       "title": "",
+       "lines": [
+        "Dégâts par carreau : 65 % → 60 % des DA"
+       ]
+      }
+     ]
+    }
+   ],
+   "lines": []
+  },
+  {
+   "title": "Systèmes",
+   "entries": [],
+   "lines": [
+    "Le tableau des scores n'affiche plus les compteurs de Danse de la mort, Tourment de Liandry, Kraken, Rageblade de Guinsoo, Plaque du mort, Lance de Shojin et d'autres objets à cumul.",
+    "Les objets de Larme de la déesse et le Voleur d'âmes de Mejai restent affichés."
+   ]
+  },
+  {
+   "title": "Autres modes",
+   "entries": [],
+   "lines": [
+    "Classic : arrivée d'Aatrox, Caitlyn, Irelia, Karma, Quinn et Valor.",
+    "Classic : DA de base de Graves 54,1 → 50 ; ratio de PA du Q de Fizz 60 % → 40 %.",
+    "ARAM : Mayhem : délai de Triggered Inferno 15 s → 5 s.",
+    "ARAM : dégâts infligés par Locke 105 % → 115 %."
+   ]
+  }
+ ]
+}

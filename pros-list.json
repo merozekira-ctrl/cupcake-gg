@@ -1,0 +1,5 @@
+[
+ {
+  "_doc": "Liste des pros et streamers reconnus par cupcake.gg. Ajoute un objet par compte : {\"name\": \"Pseudo\", \"tag\": \"TAG\", \"kind\": \"pro\" ou \"streamer\", \"label\": \"Nom affiché\", \"team\": \"Sigle d'équipe\", \"twitch\": \"chaine\"}. \"tag\": \"*\" accepte tous les tags. Les pseudos en « ttv … » ou « twtv … » sont reconnus automatiquement comme streamers."
+ }
+]

@@ -1,0 +1,532 @@
+{
+ "patch": "26.21",
+ "title": "Notes du patch 26.21",
+ "date": "2026-10-20T18:00:00.000Z",
+ "url": "https://www.leagueoflegends.com/fr-fr/news/game-updates/league-of-legends-patch-26-21-notes/",
+ "image": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/news_live/6d3f4fed564252b2e0145b179108675508cf5f19-1920x1080.jpg",
+ "banner": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/news_live/4c49249ce9a22c0bf9eab3760b0e342f79251e1f-1920x1080.png",
+ "source": "seed",
+ "fetched": 0,
+ "highlights": [
+  "Skins True Damage (dont une version Prestige d'Ekko) pour Ekko, Akali, Qiyana, Senna et Yasuo, disponibles le 21 octobre.",
+  "Téléchargement des replays limité à 10 par heure (tes replays et ceux de tes amis restent illimités).",
+  "ARAM : Mayhem passe en version « Journey to Stardom » avec une tête d'affiche par partie."
+ ],
+ "sections": [
+  {
+   "title": "Champions",
+   "entries": [
+    {
+     "name": "Azir",
+     "champ": "Azir",
+     "kind": "buff",
+     "groups": [
+      {
+       "title": "Statistiques de base",
+       "lines": [
+        "Mana par niveau : 40 → 50"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Caitlyn",
+     "champ": "Caitlyn",
+     "kind": "adjust",
+     "groups": [
+      {
+       "title": "Passif",
+       "lines": [
+        "Dégâts : 60 à 100 % des DA → 60 à 80 % des DA",
+        "Bonus par point de chances de coup critique et de dégâts critiques : 1 % → 0,8 %"
+       ]
+      },
+      {
+       "title": "Q",
+       "lines": [
+        "Dégâts de base : 50/90/130/170/210 → 50/95/140/185/230"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Darius",
+     "champ": "Darius",
+     "kind": "buff",
+     "groups": [
+      {
+       "title": "Q",
+       "lines": [
+        "Délai de récupération : 9/8/7/6/5 s → 9/8/7/6/4 s"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Jinx",
+     "champ": "Jinx",
+     "kind": "nerf",
+     "groups": [
+      {
+       "title": "Statistiques de base",
+       "lines": [
+        "Dégâts d'attaque par niveau : 3,25 → 3",
+        "PV de base : 630 → 610"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Lee Sin",
+     "champ": "LeeSin",
+     "kind": "nerf",
+     "groups": [
+      {
+       "title": "W",
+       "lines": [
+        "Délai de récupération : 7 s → 8 s"
+       ]
+      },
+      {
+       "title": "E",
+       "lines": [
+        "Ne révèle plus les ennemis qui deviennent invisibles après avoir été touchés (correctif)"
+       ]
+      },
+      {
+       "title": "R",
+       "lines": [
+        "Dégâts du coup de pied : 175/400/625 → 150/350/550",
+        "Dégâts de collision : 175/400/625 → 150/350/550"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Locke",
+     "champ": "Locke",
+     "kind": "adjust",
+     "groups": [
+      {
+       "title": "Statistiques de base",
+       "lines": [
+        "Mana par niveau : 70 → 60"
+       ]
+      },
+      {
+       "title": "Q",
+       "lines": [
+        "Remboursement des charges inutilisées : 20 à 35 % → 10 à 40 %"
+       ]
+      },
+      {
+       "title": "W",
+       "lines": [
+        "Coût en mana : 50 à 70 → 60 à 80",
+        "PV grisés stockés : 40 à 200 → 20 à 200",
+        "PV actuels stockés : 150 à 450 → 100 à 500 (+60 % PA)"
+       ]
+      },
+      {
+       "title": "E",
+       "lines": [
+        "Dégâts du saut : 40 à 80 (+40 % PA) → 40 à 100 (+50 % PA)"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Miss Fortune",
+     "champ": "MissFortune",
+     "kind": "buff",
+     "groups": [
+      {
+       "title": "E",
+       "lines": [
+        "Dégâts : 70 à 190 (+120 % PA) → 90 à 210 (+120 % PA)"
+       ]
+      },
+      {
+       "title": "R",
+       "lines": [
+        "Dégâts critiques : 130 % (+0,3 % par 1 % de critique bonus) → 145 % (+0,45 %)"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Nidalee",
+     "champ": "Nidalee",
+     "kind": "nerf",
+     "groups": [
+      {
+       "title": "Forme couguar",
+       "lines": [
+        "W – Dégâts : 55 à 190 → 50 à 170",
+        "E – Vitesse d'attaque : 30 à 70 % → 20 à 60 %"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Nunu et Willump",
+     "champ": "Nunu",
+     "kind": "buff",
+     "groups": [
+      {
+       "title": "R",
+       "lines": [
+        "Dégâts maximum : 625/925/1275 → 750/1100/1450 (+300 % PA)"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Orianna",
+     "champ": "Orianna",
+     "kind": "buff",
+     "groups": [
+      {
+       "title": "Compétences",
+       "lines": [
+        "Q – Ratio de PA : 55 % → 60 %",
+        "W – Ratio de PA : 80 % → 85 %"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Qiyana",
+     "champ": "Qiyana",
+     "kind": "nerf",
+     "groups": [
+      {
+       "title": "Q",
+       "lines": [
+        "Dégâts : 80 à 200 → 70 à 190 (retour partiel sur le buff du 26.17)"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Rammus",
+     "champ": "Rammus",
+     "kind": "nerf",
+     "groups": [
+      {
+       "title": "W",
+       "lines": [
+        "Armure bonus : 27 à 47 → 25 à 45",
+        "Plafond des bonus d'armure et de RM : 60 % → 50 %"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Ryze",
+     "champ": "Ryze",
+     "kind": "buff",
+     "groups": [
+      {
+       "title": "Q",
+       "lines": [
+        "Dégâts bonus avec Flux : 15/40/65/90 % → 10/40/70/100 %",
+        "Vitesse de déplacement bonus : 28 à 44 % → 30 à 50 %"
+       ]
+      },
+      {
+       "title": "W",
+       "lines": [
+        "Ratio de PA : 60 % → 70 %"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Sion",
+     "champ": "Sion",
+     "kind": "buff",
+     "groups": [
+      {
+       "title": "Statistiques de base",
+       "lines": [
+        "PV par niveau : 87 → 95"
+       ]
+      },
+      {
+       "title": "R",
+       "lines": [
+        "Dégâts pendant les 3 premières secondes : jusqu'à 166,67 % → jusqu'à 200 %"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Taliyah",
+     "champ": "Taliyah",
+     "kind": "buff",
+     "groups": [
+      {
+       "title": "E",
+       "lines": [
+        "Dégâts : 60 à 240 (+60 % PA) → 70 à 250 (+70 % PA)",
+        "Dégâts de détonation : 25 à 85 → 30 à 90",
+        "Inflige 225 % de dégâts aux monstres"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Taric",
+     "champ": "Taric",
+     "kind": "adjust",
+     "groups": [
+      {
+       "title": "Confort de jeu",
+       "lines": [
+        "Q, E et R se lancent correctement quand les alliés sont intouchables",
+        "E ne part plus depuis un allié disparu (Vanished)"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Tristana",
+     "champ": "Tristana",
+     "kind": "nerf",
+     "groups": [
+      {
+       "title": "Q",
+       "lines": [
+        "Vitesse d'attaque : 60 à 120 % → 40 à 120 %"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Twisted Fate",
+     "champ": "TwistedFate",
+     "kind": "adjust",
+     "groups": [
+      {
+       "title": "R",
+       "lines": [
+        "Révèle désormais les unités intouchables"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Varus",
+     "champ": "Varus",
+     "kind": "adjust",
+     "groups": [
+      {
+       "title": "Q",
+       "lines": [
+        "Dégâts minimum : 50 à 230 (+80 % DA bonus), jusqu'à 85 à 391 (+136 % DA bonus) chargé",
+        "Bonus de dégâts en canalisation : jusqu'à 50 % → jusqu'à 70 %"
+       ]
+      },
+      {
+       "title": "W",
+       "lines": [
+        "Dégâts à l'impact : 4 à 40 → 4 à 28 (DA bonus 15 % → 20 %, PA 25 % → 30 %)",
+        "Dégâts par cumul : 3 à 5 % → 2,5 à 4,5 %",
+        "Remboursement de délai par cumul : 13 % → 11 %"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Vel'Koz",
+     "champ": "Velkoz",
+     "kind": "buff",
+     "groups": [
+      {
+       "title": "Passif",
+       "lines": [
+        "Dégâts : 35 à 180 (+60 % PA) → 35 à 205 (+65 % PA)"
+       ]
+      },
+      {
+       "title": "Q",
+       "lines": [
+        "Délai de récupération : 7 s → 6 s"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Viktor",
+     "champ": "Viktor",
+     "kind": "nerf",
+     "groups": [
+      {
+       "title": "Statistiques de base",
+       "lines": [
+        "Vitesse de déplacement : 335 → 330"
+       ]
+      },
+      {
+       "title": "Q",
+       "lines": [
+        "Bouclier : 40 à 140 (+25 % PA) → 30 à 130 (+20 % PA)",
+        "Durée du bouclier : 2,5 s → 2 s"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Wukong",
+     "champ": "MonkeyKing",
+     "kind": "adjust",
+     "groups": [
+      {
+       "title": "Statistiques de base",
+       "lines": [
+        "Régénération des PV : 3,5 → 5,5 (+0,65 par niveau)"
+       ]
+      },
+      {
+       "title": "Passif",
+       "lines": [
+        "Armure par cumul : 6 à 10 → 4,5 à 10"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Xin Zhao",
+     "champ": "XinZhao",
+     "kind": "buff",
+     "groups": [
+      {
+       "title": "Compétences",
+       "lines": [
+        "Q – Ratio de DA par coup : 40 % → 45 %",
+        "E – Vitesse d'attaque : 1 % par tranche de 5 % → 1 % par tranche de 4 % de VA bonus"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Yone",
+     "champ": "Yone",
+     "kind": "nerf",
+     "groups": [
+      {
+       "title": "Q",
+       "lines": [
+        "Ratio de DA : 110 % → 105 %"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Zyra",
+     "champ": "Zyra",
+     "kind": "buff",
+     "groups": [
+      {
+       "title": "W",
+       "lines": [
+        "Recharge des graines : 18/16/14/12/10 s → 16/14,5/13/11,5/10 s"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Objets",
+   "entries": [
+    {
+     "name": "Bastion Breaker",
+     "kind": "nerf",
+     "groups": [
+      {
+       "title": "",
+       "lines": [
+        "Létalité : 22 → 18",
+        "Charge façonnée (mêlée) : 50 → 40",
+        "Charge façonnée (distance) : 25 → 20",
+        "Durée du sabotage : 90 s → illimitée"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Dawncore",
+     "item": 6621,
+     "kind": "buff",
+     "groups": [
+      {
+       "title": "",
+       "lines": [
+        "PA par tranche de 100 % de régénération de mana de base : 10 → 15"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Gluttonous Greaves",
+     "kind": "nerf",
+     "groups": [
+      {
+       "title": "",
+       "lines": [
+        "Coût total : 1000 → 1100 po"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Hubris",
+     "item": 6697,
+     "kind": "buff",
+     "groups": [
+      {
+       "title": "",
+       "lines": [
+        "DA bonus de base : 12 → 15 (mêlée) / 10 (distance)",
+        "DA par cumul : 3 → 3 (mêlée) / 2 (distance)"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "ARAM : Mayhem",
+   "entries": [],
+   "lines": [
+    "Nouvelle version « Journey to Stardom » : chaque partie a une tête d'affiche qui change les règles (K/DA, HEARTSTEEL, True Damage, Pentakill…).",
+    "Butcher's Bridge et Koeshin's Crossing sont absents ce patch et reviennent au prochain.",
+    "Nouveaux augments argent, or et prismatiques ; 13 augments retirés.",
+    "Nouveau système de missions et de rang Superstar."
+   ]
+  },
+  {
+   "title": "Arena",
+   "entries": [],
+   "lines": [
+    "Ezreal : ratio de DA du R 100 % → 150 %, délai 50/40/30 s → 40/30/20 s.",
+    "Gangplank : ratio de PA du W 90 % → 135 %, délai du R 130/110/90 s → 100/80/60 s.",
+    "Yuumi : puissance des soins et boucliers du W 10 à 25 % → 4 à 8 %.",
+    "Milio : délai du Q 8 s → 10 s, ratio de PA 120 % → 200 %.",
+    "Objets : Turbo Chemtank rend 20 % des PV max (au lieu de 4 %), portée de Galeforce 600 → 900."
+   ]
+  },
+  {
+   "title": "Correctifs",
+   "entries": [],
+   "lines": [
+    "Le Q de Zaahen n'échoue plus s'il meurt et ressuscite pendant l'attaque.",
+    "Le délai de récupération de l'Hydre titanesque s'affiche après utilisation.",
+    "Grêle de lames se déclenche correctement après une attaque annulée.",
+    "Le javelot de Nidalee ne traverse plus les boucliers anti-sorts à portée maximum."
+   ]
+  }
+ ]
+}

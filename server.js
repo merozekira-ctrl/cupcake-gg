@@ -728,11 +728,13 @@ async function getSummoner(platform, name, tag, force) {
     const solo = compactLeague(league).solo;
     indexPlayer(platform, acc.gameName, acc.tagLine, { icon: sum.profileIconId, tier: solo?.tier, lp: solo?.lp });
   }
+  const [known] = await tagKnown([{ puuid: acc.puuid, name: acc.gameName, tag: acc.tagLine }]);
   return {
     platform,
     puuid: acc.puuid,
     name: acc.gameName,
     tag: acc.tagLine,
+    pro: known.pro || null,
     icon: sum.profileIconId,
     level: sum.summonerLevel,
     fetchedAt: Date.now(),
@@ -1065,6 +1067,8 @@ async function getLive(platform, puuid) {
       if (p.puuid && name) rememberName(p.puuid, name, tag);
       return {
         puuid: p.puuid || null,
+        // Mode streamer ou identité masquée : Riot ne renvoie ni puuid ni Riot ID.
+        hidden: !p.puuid,
         name: name || 'Joueur masqué',
         tag,
         champ: p.championId,
@@ -1090,6 +1094,7 @@ async function getLive(platform, puuid) {
     /* rôles non déduits : l'ordre de Riot est conservé */
   }
   await findDuos(platform, parts).catch(() => {});
+  await tagKnown(parts.filter((p) => !p.hidden));
   return {
     live: true,
     id: g.gameId,
@@ -1190,6 +1195,8 @@ async function getLivePlayer(platform, puuid, champ, role) {
     if (role !== 'UTILITY' && stats.bld > 0 && stats.bld < 1200) t('b', 'Oublie les tours', `${Math.round(stats.bld)} dégâts aux bâtiments/partie`);
   }
   const out = {
+    // Aucune donnée accessible (profil masqué, compte récent ou mode streamer) : la carte affiche « Stats cachées ».
+    hidden: !mast && !n && !(ids30 || []).length && !(ids12 || []).length,
     mastery: { lvl, pts, last: mast?.lastPlayTime || null },
     h12: (ids12 || []).length,
     d30: (ids30 || []).length,
@@ -1271,6 +1278,7 @@ async function getLadder(platform, queue, page) {
   const pages = Math.max(1, Math.ceil(rows.length / size));
   const p = clampInt(page, 1, pages, 1);
   const slice = rows.slice((p - 1) * size, p * size).map((r) => ({ ...r, ...(r.puuid ? ladderId.get(r.puuid) || names.get(r.puuid) || {} : {}) }));
+  await tagKnown(slice);
   return { queue: qk, page: p, pages, total: rows.length, size, rows: slice };
 }
 
@@ -1299,6 +1307,7 @@ async function getLadderIdentity(list) {
       ]);
       if (!acc && !sum) return;
       const v = { ...(acc || {}), icon: sum?.profileIconId ?? null, level: sum?.summonerLevel ?? null, mastery: (mast || []).map((m) => m.championId) };
+      await tagKnown([{ v, id }], (x) => [x.id, x.v.name, x.v.tag]).then(([x]) => x.pro && (v.pro = x.pro));
       if (acc) indexPlayer(p, acc.name, acc.tag, { icon: v.icon });
       out[id] = ladderId.set(id, v, 86400);
     })
@@ -1504,11 +1513,65 @@ const newEntry = () => ({
   skills: {}, vs: {}, recent: [],
 });
 
+// Écarts en lane à 15 minutes (or, farm, expérience) entre chaque joueur et son vis-à-vis.
+function laneDiffs(tl, info) {
+  const frames = tl?.info?.frames || [];
+  const f = frames[15] || frames[frames.length - 1];
+  if (!f || frames.length < 15) return {};
+  const pid = {};
+  for (const x of tl.info.participants || []) pid[x.puuid] = x.participantId;
+  const at = (puuid) => f.participantFrames?.[pid[puuid]];
+  const out = {};
+  for (const p of info.participants) {
+    const opp = info.participants.find((q) => q.teamPosition && q.teamPosition === p.teamPosition && q.teamId !== p.teamId);
+    const a = at(p.puuid);
+    const b = opp && at(opp.puuid);
+    if (!a || !b) continue;
+    const cs = (v) => (v.minionsKilled || 0) + (v.jungleMinionsKilled || 0);
+    out[p.puuid] = { gd: (a.totalGold || 0) - (b.totalGold || 0), csd: cs(a) - cs(b), xpd: (a.xp || 0) - (b.xp || 0) };
+  }
+  return out;
+}
+
+// Statistiques par joueur et par champion (classement OTP). Reconstruites depuis les parties
+// récentes pour les échantillons créés avant l'ajout de ce suivi.
+function derivePlayers(P) {
+  const out = {};
+  for (const [k, c] of Object.entries(P.champs || {})) {
+    const [id, role] = k.split('|');
+    for (const r of c.recent || []) addPlayerGame(out, r.pu, { n: r.n, tg: r.tg, tier: r.tier, lp: r.lp, t: r.t }, Number(id), role, r);
+  }
+  return out;
+}
+function addPlayerGame(players, pu, who, champ, role, g) {
+  if (!pu) return;
+  const x = players[pu] || (players[pu] = { n: '', tg: '', tier: '', lp: null, t: 0, g: 0, champs: {}, roles: {}, items: {} });
+  if (who.t >= x.t) {
+    x.n = who.n || x.n;
+    x.tg = who.tg || x.tg;
+    x.tier = who.tier || x.tier;
+    x.lp = who.lp ?? x.lp;
+    x.t = who.t;
+  }
+  x.g++;
+  const c = x.champs[champ] || (x.champs[champ] = [0, 0, 0, 0, 0]);
+  c[0]++;
+  c[1] += g.w ? 1 : 0;
+  c[2] += g.k;
+  c[3] += g.d;
+  c[4] += g.a;
+  if (role && role !== 'ALL') x.roles[role] = (x.roles[role] || 0) + 1;
+  const it = x.items[champ] || (x.items[champ] = {});
+  for (const id of (g.ord && g.ord.length ? g.ord : g.it || []).slice(0, 6)) if (id) it[id] = (it[id] || 0) + 1;
+}
+
 function aggregate(meta, m, tl, st, ladder, mode = 'sr') {
   const i = m.info;
   const patch = patchOf(i.gameVersion);
   const P = meta.patches[patch] || (meta.patches[patch] = { games: 0, bans: {}, champs: {} });
   P.games++;
+  if (mode === 'sr' && !P.players) P.players = derivePlayers(P);
+  const lane = mode === 'sr' && tl ? laneDiffs(tl, i) : {};
   const banned = new Set();
   for (const t of i.teams || []) for (const b of t.bans || []) if (b.championId > 0) banned.add(b.championId);
   banned.forEach((c) => {
@@ -1564,6 +1627,15 @@ function aggregate(meta, m, tl, st, ladder, mode = 'sr') {
     }
     const opp = i.participants.find((q) => q.teamPosition === role && q.teamId !== p.teamId);
     if (opp) bump(c.vs, opp.championId, w);
+    const ld = lane[p.puuid];
+    if (opp && ld) {
+      // vd[adversaire] = [parties avec chronologie, somme écart d'or, somme écart de CS, somme écart d'XP] à 15 min
+      const e = (c.vd = c.vd || {})[opp.championId] || (c.vd[opp.championId] = [0, 0, 0, 0]);
+      e[0]++;
+      e[1] += ld.gd;
+      e[2] += ld.csd;
+      e[3] += ld.xpd;
+    }
 
     const d = dig[p.puuid];
     if (d) {
@@ -1574,7 +1646,7 @@ function aggregate(meta, m, tl, st, ladder, mode = 'sr') {
       if (d.prio) bump(c.skills, d.prio, w);
     }
     const lad = ladder[p.puuid];
-    c.recent.push({
+    const rec = {
       m: m.metadata.matchId,
       t: start,
       dur: i.gameDuration,
@@ -1598,9 +1670,12 @@ function aggregate(meta, m, tl, st, ladder, mode = 'sr') {
       s1: p.summoner1Id,
       s2: p.summoner2Id,
       vs: opp?.championId || 0,
-    });
+      ...(ld ? { gd: ld.gd, csd: ld.csd } : {}),
+    };
+    c.recent.push(rec);
     c.recent.sort((a, b) => b.t - a.t);
     if (c.recent.length > 40) c.recent.length = 40;
+    if (mode === 'sr') addPlayerGame(P.players, p.puuid, { n: rec.n, tg: rec.tg, tier: rec.tier, lp: rec.lp, t: start }, p.championId, role, rec);
   }
   const keep = Object.keys(meta.patches).sort(cmpPatch).slice(-2);
   for (const k of Object.keys(meta.patches)) if (!keep.includes(k)) delete meta.patches[k];
@@ -1643,10 +1718,537 @@ async function metaChampion(platform, key, patch, mode = 'sr') {
   if (P) {
     for (const [k, c] of Object.entries(P.champs)) {
       const [id, role] = k.split('|');
-      if (Number(id) === key) roles[role] = c;
+      // Copie : les étiquettes pro/streamer ne doivent pas finir dans le fichier d'échantillon.
+      if (Number(id) === key) roles[role] = { ...c, recent: (c.recent || []).map((g) => ({ ...g })) };
     }
   }
+  for (const c of Object.values(roles)) await tagKnown(c.recent, (g) => [g.pu, g.n, g.tg]);
   return { mode, job: jobView(metaJobs[mk]), patch: ver || null, current: cur, available, games: P?.games || 0, bans: P?.bans?.[key] || 0, roles, pros: await readPros(), updated: m.updated };
+}
+
+/* ---------- Classement OTP (one trick) ---------- */
+// Joueurs Challenger / Grand Maître de l'échantillon qui jouent surtout un champion.
+
+const TIER_ORDER = ['CHALLENGER', 'GRANDMASTER', 'MASTER'];
+async function ladderMap(platform) {
+  let rows = cache.get(`ladder:${platform}:RANKED_SOLO_5x5`);
+  if (!rows && KEY) await getLadder(platform, 'solo', 1).catch(() => null);
+  rows = cache.get(`ladder:${platform}:RANKED_SOLO_5x5`) || [];
+  return new Map(rows.filter((r) => r.puuid).map((r) => [r.puuid, r]));
+}
+
+async function getOtp(platform, q) {
+  const m = await readMeta(platform);
+  const champF = Number(q.champ) || 0;
+  const roleF = ROLES_OK.includes(q.role) ? q.role : '';
+  const sort = q.sort === 'score' ? 'score' : 'lp';
+  const agg = {};
+  for (const P of Object.values(m.patches)) {
+    const pl = P.players || derivePlayers(P);
+    for (const [pu, x] of Object.entries(pl)) {
+      const a = agg[pu] || (agg[pu] = { n: x.n, tg: x.tg, tier: x.tier, lp: x.lp, t: x.t, g: 0, champs: {}, roles: {}, items: {} });
+      if (x.t >= a.t) Object.assign(a, { n: x.n || a.n, tg: x.tg || a.tg, tier: x.tier || a.tier, lp: x.lp ?? a.lp, t: x.t });
+      a.g += x.g;
+      for (const [c, v] of Object.entries(x.champs)) {
+        const e = a.champs[c] || (a.champs[c] = [0, 0, 0, 0, 0]);
+        v.forEach((n, i) => (e[i] += n));
+      }
+      for (const [r, n] of Object.entries(x.roles)) a.roles[r] = (a.roles[r] || 0) + n;
+      for (const [c, it] of Object.entries(x.items || {})) {
+        const e = a.items[c] || (a.items[c] = {});
+        for (const [id, n] of Object.entries(it)) e[id] = (e[id] || 0) + n;
+      }
+    }
+  }
+  const lad = await ladderMap(platform);
+  const rows = [];
+  const champCount = {};
+  for (const [pu, a] of Object.entries(agg)) {
+    if (a.g < 4) continue;
+    const list = Object.entries(a.champs).sort((x, y) => y[1][0] - x[1][0]);
+    const [cid, v] = champF ? [String(champF), a.champs[champF]] : list[0];
+    if (!v) continue;
+    const share = v[0] / a.g;
+    const isOtp = champF ? v[0] >= 3 && share >= 0.35 : v[0] >= 4 && share >= 0.55;
+    if (!isOtp) continue;
+    const role = Object.entries(a.roles).sort((x, y) => y[1] - x[1])[0]?.[0] || '';
+    if (roleF && role !== roleF) continue;
+    if (!champF) champCount[cid] = (champCount[cid] || 0) + 1;
+    const L = lad.get(pu);
+    const items = Object.entries(a.items[cid] || {})
+      .sort((x, y) => y[1] - x[1])
+      .slice(0, 3)
+      .map(([id]) => Number(id));
+    rows.push({
+      p: platform,
+      puuid: pu,
+      name: a.n,
+      tag: a.tg,
+      tier: L?.tier || a.tier || '',
+      lp: L?.lp ?? a.lp ?? null,
+      w: L?.w ?? null,
+      l: L?.l ?? null,
+      champ: Number(cid),
+      g: v[0],
+      cw: v[1],
+      kda: (v[2] + v[4]) / Math.max(1, v[3]),
+      n: a.g,
+      share,
+      score: Math.round(share * 70 + Math.min(1, v[0] / 12) * 30),
+      items,
+      role,
+    });
+  }
+  const tierIdx = (t) => (TIER_ORDER.indexOf(t) + 1 || 9);
+  rows.sort((a, b) => (sort === 'score' ? b.score - a.score : 0) || tierIdx(a.tier) - tierIdx(b.tier) || (b.lp ?? -1) - (a.lp ?? -1) || b.share - a.share);
+  rows.forEach((r, i) => (r.rank = i + 1));
+  const out = rows.slice(0, 100);
+  await tagKnown(out);
+  return { platform, updated: m.updated, patches: Object.keys(m.patches).sort(cmpPatch).reverse(), total: rows.length, rows: out, champs: champCount };
+}
+
+/* ---------- Matchups ---------- */
+
+const laneScore = (g) => {
+  // Note sur 100 : KDA, farm par minute, participation, victoire.
+  const min = Math.max(1, (g.dur || 1800) / 60);
+  const kda = (g.k + g.a) / Math.max(1, g.d);
+  return Math.round(Math.min(1, kda / 6) * 38 + Math.min(1, g.cs / min / 9) * 22 + Math.min(1, (g.k + g.a) / 22) * 15 + (g.w ? 25 : 0));
+};
+
+async function getMatchup(platform, q) {
+  const m = await readMeta(platform);
+  const champ = Number(q.champ) || 0;
+  const vs = Number(q.vs) || 0;
+  const side = q.side === 'against' ? 'against' : 'with';
+  const available = Object.keys(m.patches).filter((v) => m.patches[v].games > 0).sort(cmpPatch).reverse();
+  const cur = await currentPatch();
+  const ver = available.includes(q.patch) ? q.patch : available.includes(cur) ? cur : available[0];
+  const P = ver ? m.patches[ver] : null;
+  const base = { platform, patch: ver || null, available, champ, vs, side, games: P?.games || 0 };
+  if (!P) return { ...base, role: null, roles: {}, rows: [], opponents: [], summary: null };
+
+  // Rôles possibles pour le champion choisi (ou l'adversaire seul).
+  const focus = champ || vs;
+  const roles = {};
+  for (const [k, c] of Object.entries(P.champs)) {
+    const [id, r] = k.split('|');
+    if (Number(id) === focus) roles[r] = c.g;
+  }
+  const role = ROLES_OK.includes(q.role) ? q.role : Object.entries(roles).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+
+  const entries = Object.entries(P.champs).filter(([k]) => !role || k.endsWith('|' + role));
+  let games = [];
+  if (champ) {
+    if (side === 'with') {
+      const E = P.champs[`${champ}|${role}`];
+      games = (E?.recent || []).filter((g) => !vs || g.vs === vs).map((g) => ({ ...g, champ }));
+    } else {
+      for (const [k, c] of entries) {
+        const id = Number(k.split('|')[0]);
+        if (vs && id !== vs) continue;
+        for (const g of c.recent || []) if (g.vs === champ) games.push({ ...g, champ: id });
+      }
+    }
+  } else {
+    for (const [k, c] of entries) {
+      const id = Number(k.split('|')[0]);
+      for (const g of c.recent || []) if (!vs || g.vs === vs) games.push({ ...g, champ: id });
+    }
+  }
+  games.sort((a, b) => b.t - a.t);
+  games = games.slice(0, 60).map((g) => ({ ...g, score: laneScore(g), patch: ver, p: platform }));
+  await tagKnown(games, (g) => [g.pu, g.n, g.tg]);
+
+  // Adversaires du champion dans ce rôle (victoires du point de vue du champion).
+  const E = champ && role ? P.champs[`${champ}|${role}`] : null;
+  const opponents = Object.entries(E?.vs || {})
+    .map(([id, [g, w]]) => {
+      const d = E.vd?.[id];
+      return { id: Number(id), g, w, gd: d && d[0] ? Math.round(d[1] / d[0]) : null };
+    })
+    .sort((a, b) => b.g - a.g);
+
+  let summary = null;
+  if (champ && vs && E) {
+    const [g, w] = E.vs?.[vs] || [0, 0];
+    const d = E.vd?.[vs];
+    const mine = (E.recent || []).filter((x) => x.vs === vs);
+    const n = mine.length;
+    const sum = (f) => mine.reduce((s, x) => s + f(x), 0);
+    const count = (f) => {
+      const o = {};
+      for (const x of mine) for (const k of f(x)) if (k) o[k] = (o[k] || 0) + 1;
+      return Object.entries(o).sort((a, b) => b[1] - a[1]);
+    };
+    summary = {
+      g,
+      w,
+      gd15: d && d[0] ? Math.round(d[1] / d[0]) : null,
+      csd15: d && d[0] ? Math.round((d[2] / d[0]) * 10) / 10 : null,
+      xpd15: d && d[0] ? Math.round(d[3] / d[0]) : null,
+      n,
+      k: n ? sum((x) => x.k) / n : 0,
+      d: n ? sum((x) => x.d) / n : 0,
+      a: n ? sum((x) => x.a) / n : 0,
+      cs: n ? sum((x) => x.cs / Math.max(1, x.dur / 60)) / n : 0,
+      items: count((x) => (x.ord?.length ? x.ord : x.it).slice(0, 6)).slice(0, 6).map(([id, c]) => [Number(id), c]),
+      keystones: count((x) => [x.ks]).slice(0, 3).map(([id, c]) => [Number(id), c]),
+      spells: count((x) => [[x.s1, x.s2].sort((a, b) => a - b).join('-')]).slice(0, 2),
+    };
+  }
+  return { ...base, role, roles, rows: games, opponents, summary };
+}
+
+/* ---------- Patch notes ---------- */
+// Trois sources : l'article officiel (lu et découpé quand le site Riot répond), les notes
+// fournies dans seed/ (version de démonstration) et la comparaison automatique de deux
+// versions de Data Dragon (statistiques, délais de récupération, objets).
+
+const RIOT_LOCALE = { fr_FR: 'fr-fr', en_US: 'en-us', en_GB: 'en-gb', de_DE: 'de-de', es_ES: 'es-es', it_IT: 'it-it', pl_PL: 'pl-pl', pt_BR: 'pt-br' }[LANG] || 'fr-fr';
+const NEWS_BASE = (process.env.NEWS_BASE || 'https://www.leagueoflegends.com').replace(/\/$/, '');
+// Data Dragon 16.21 = patch 26.21 (numérotation officielle par année depuis 2026).
+const patchLabel = (v) => {
+  const [a, b] = String(v || '').split('.').map(Number);
+  return a >= 16 ? `${a + 10}.${b}` : `${a}.${b}`;
+};
+const ddOfLabel = (label) => {
+  const [a, b] = String(label).split('.').map(Number);
+  return a >= 26 ? `${a - 10}.${b}` : `${a}.${b}`;
+};
+const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', rsquo: '’', lsquo: '‘', rarr: '→', hellip: '…', ndash: '–', mdash: '—', laquo: '«', raquo: '»', eacute: 'é', egrave: 'è', agrave: 'à', ccedil: 'ç' };
+const decodeHtml = (s) =>
+  String(s || '').replace(/&(#x?[0-9a-f]+|\w+);/gi, (m, e) => {
+    if (e[0] === '#') {
+      const n = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+      return Number.isFinite(n) ? String.fromCodePoint(n) : m;
+    }
+    return ENTITIES[e.toLowerCase()] ?? m;
+  });
+const htmlText = (s) =>
+  decodeHtml(String(s || '').replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]*>/g, ' '))
+    .replace(/\s*[⇒⟹]\s*/g, ' → ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+async function fetchText(url, ms = 15000) {
+  const r = await fetch(url, {
+    signal: AbortSignal.timeout(ms),
+    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; cupcake.gg)', 'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.6' },
+  });
+  if (!r.ok) throw new ApiError(r.status, `HTTP ${r.status}`);
+  return r.text();
+}
+
+const guessUrls = (label) => {
+  const [a, b] = label.split('.');
+  return [
+    `${NEWS_BASE}/${RIOT_LOCALE}/news/game-updates/league-of-legends-patch-${a}-${b}-notes/`,
+    `${NEWS_BASE}/${RIOT_LOCALE}/news/game-updates/patch-${a}-${b}-notes/`,
+  ];
+};
+
+// Index des articles « notes de patch » publiés (lien officiel par patch), mis à jour toutes les 3 h.
+let notesIdx = null;
+async function notesIndex() {
+  if (notesIdx && Date.now() - notesIdx.at < 3 * 3600e3) return notesIdx.map;
+  const file = path.join(DATA_DIR, 'patchnotes-index.json');
+  const map = await readJson(file, {});
+  try {
+    const html = await fetchText(`${NEWS_BASE}/${RIOT_LOCALE}/news/tags/patch-notes/`, 12000);
+    let found = 0;
+    for (const mm of html.matchAll(/href="((?:https?:\/\/[^"/]+)?\/[a-z]{2}-[a-z]{2}\/news\/game-updates\/[a-z0-9-]*?patch-(\d{2})-(\d{1,2})-notes[a-z0-9-]*\/?)"/gi)) {
+      const label = `${mm[2]}.${Number(mm[3])}`;
+      map[label] = { ...(map[label] || {}), url: mm[1].startsWith('http') ? mm[1] : NEWS_BASE + mm[1] };
+      found++;
+    }
+    if (found) await writeJson(file, map).catch(() => {});
+  } catch {
+    /* site Riot injoignable : index précédent */
+  }
+  notesIdx = { at: Date.now(), map };
+  return map;
+}
+
+// Découpe d'un article officiel : sections (h2), éléments modifiés (h3), sous-titres (h4), lignes (li).
+function parseRiotNotes(html) {
+  const meta = (prop) =>
+    (html.match(new RegExp(`<meta[^>]+(?:property|name)="${prop}"[^>]*content="([^"]*)"`, 'i')) ||
+      html.match(new RegExp(`<meta[^>]+content="([^"]*)"[^>]*(?:property|name)="${prop}"`, 'i')) ||
+      [])[1];
+  const out = {
+    title: htmlText(meta('og:title') || (html.match(/<title>([^<]*)<\/title>/i) || [])[1] || ''),
+    image: decodeHtml(meta('og:image') || '') || null,
+    description: htmlText(meta('og:description') || ''),
+    date: meta('article:published_time') || (html.match(/"(?:datePublished|publishedAt|date)"\s*:\s*"(\d{4}-\d{2}-\d{2}T[^"]+)"/) || [])[1] || null,
+    banner: null,
+    sections: [],
+  };
+  const start = html.search(/<h2\b/i);
+  const body = start >= 0 ? html.slice(start) : '';
+  const re = /<(h2|h3|h4)\b([^>]*)>([\s\S]*?)<\/\1>|<li\b[^>]*>([\s\S]*?)<\/li>|<blockquote\b[^>]*>([\s\S]*?)<\/blockquote>|<p\b[^>]*class="[^"]*summary[^"]*"[^>]*>([\s\S]*?)<\/p>|<img\b[^>]*src="([^"]+)"[^>]*>/gi;
+  let sec = null;
+  let ent = null;
+  let grp = null;
+  let lines = 0;
+  for (const t of body.matchAll(re)) {
+    if (t[1]) {
+      const txt = htmlText(t[3]);
+      if (!txt) continue;
+      if (t[1].toLowerCase() === 'h2') {
+        sec = { title: txt, entries: [], lines: [] };
+        out.sections.push(sec);
+        ent = grp = null;
+      } else if (t[1].toLowerCase() === 'h3') {
+        if (!sec) out.sections.push((sec = { title: 'Changements', entries: [], lines: [] }));
+        ent = { name: txt, summary: '', context: '', groups: [] };
+        sec.entries.push(ent);
+        grp = null;
+      } else {
+        if (!sec) continue;
+        if (!ent) sec.entries.push((ent = { name: txt, summary: '', context: '', groups: [] }));
+        else ent.groups.push((grp = { title: txt, lines: [] }));
+      }
+    } else if (t[4] !== undefined) {
+      const txt = htmlText(t[4]);
+      if (!txt || !sec || txt.length > 600) continue;
+      lines++;
+      if (ent) {
+        if (!grp) ent.groups.push((grp = { title: '', lines: [] }));
+        grp.lines.push(txt);
+      } else sec.lines.push(txt);
+    } else if (t[5] !== undefined) {
+      if (ent && !ent.context) ent.context = htmlText(t[5]).slice(0, 600);
+    } else if (t[6] !== undefined) {
+      if (ent && !ent.summary) ent.summary = htmlText(t[6]).slice(0, 300);
+    } else if (t[7] && sec && !out.banner && /aperçu|highlights|faits marquants|points forts/i.test(sec.title)) {
+      out.banner = decodeHtml(t[7]);
+    }
+  }
+  out.sections = out.sections.filter((s) => s.entries.length || s.lines.length);
+  const entries = out.sections.reduce((n, s) => n + s.entries.length, 0);
+  out.ok = entries >= 3 && lines >= 6;
+  return out;
+}
+
+// Buff / nerf / ajustement, déduit des valeurs « avant → après » (délai et coût : plus bas = buff).
+function classifyLines(lines) {
+  let up = 0;
+  let down = 0;
+  for (const l of lines) {
+    const m = l.match(/^(.*?)(?::|\s)\s*([^→]*?)\s*→\s*(.+)$/);
+    if (!m) continue;
+    const nums = (s) => (s.match(/-?\d+(?:[.,]\d+)?/g) || []).map((x) => Number(x.replace(',', '.')));
+    const a = nums(m[2]);
+    const b = nums(m[3]);
+    if (!a.length || !b.length) continue;
+    const sa = a.reduce((s, x) => s + x, 0) / a.length;
+    const sb = b.reduce((s, x) => s + x, 0) / b.length;
+    if (sa === sb) continue;
+    const lowerIsBetter = /délai|récupération|cooldown|coût|cost|temps d'incantation|délai de|mana/i.test(m[1] + ' ' + l.split('→')[0]);
+    const better = lowerIsBetter ? sb < sa : sb > sa;
+    if (better) up++;
+    else down++;
+  }
+  if (!up && !down) return 'adjust';
+  if (up && !down) return 'buff';
+  if (down && !up) return 'nerf';
+  return up >= down * 2 ? 'buff' : down >= up * 2 ? 'nerf' : 'adjust';
+}
+
+// Relie chaque élément aux données du jeu (icône de champion ou d'objet) et complète buff / nerf.
+function linkNotes(notes, st) {
+  const champs = Object.values(st?.champions || {});
+  const items = Object.entries(st?.items || {});
+  const n = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+  const byChamp = new Map();
+  for (const c of champs) {
+    byChamp.set(n(c.name), c);
+    byChamp.set(n(c.id), c);
+  }
+  const byItem = new Map();
+  for (const [id, it] of items) if (!byItem.has(n(it.name)) || it.sr) byItem.set(n(it.name), Number(id));
+  for (const s of notes.sections || []) {
+    for (const e of s.entries || []) {
+      const key = n(e.name);
+      if (!e.champ && !e.item) {
+        const c = byChamp.get(key) || (key.length > 3 && champs.find((x) => key.startsWith(n(x.name)) && n(x.name).length > 3));
+        if (c && !/objet|item|rune|systeme|system/i.test(s.title)) e.champ = c.id;
+        else if (byItem.has(key)) e.item = byItem.get(key);
+      }
+      if (e.champ && !e.key) e.key = Object.values(st?.champions || {}).find((c) => c.id === e.champ)?.key || null;
+      if (!e.kind && (e.champ || e.item)) e.kind = classifyLines((e.groups || []).flatMap((g) => g.lines));
+    }
+  }
+  return notes;
+}
+
+const notesTried = new Map();
+async function getPatchNotes(label) {
+  if (!/^\d{2}\.\d{1,2}$/.test(label)) throw new ApiError(400, 'Patch invalide.');
+  const file = path.join(DATA_DIR, `patchnotes-${label}.json`);
+  const st = await getStatic().catch(() => null);
+  const saved = await readJson(file, null);
+  const recent = Date.now() - (notesTried.get(label) || 0) < 6 * 3600e3;
+  if (saved && (saved.source === 'riot' || recent)) return linkNotes(saved, st);
+  if (!saved && recent) {
+    const idx = notesIdx?.map || {};
+    return { patch: label, url: idx[label]?.url || guessUrls(label)[0], title: `Patch ${label}`, image: null, date: null, sections: [], source: 'none' };
+  }
+  notesTried.set(label, Date.now());
+  const idx = await notesIndex();
+  let found = null;
+  for (const u of [...new Set([idx[label]?.url, ...guessUrls(label)].filter(Boolean))]) {
+    try {
+      const html = await fetchText(u);
+      const parsed = parseRiotNotes(html);
+      found = { url: u, title: parsed.title, image: parsed.image, date: parsed.date };
+      if (parsed.ok) {
+        const out = { patch: label, url: u, title: parsed.title || `Patch ${label}`, image: parsed.image, banner: parsed.banner, date: parsed.date, description: parsed.description, sections: parsed.sections, source: 'riot', fetched: Date.now() };
+        await writeJson(file, out).catch(() => {});
+        return linkNotes(out, st);
+      }
+      break;
+    } catch {
+      /* adresse suivante */
+    }
+  }
+  if (saved) return linkNotes({ ...saved, url: found?.url || saved.url, image: saved.image || found?.image || null }, st);
+  return { patch: label, url: found?.url || idx[label]?.url || guessUrls(label)[0], title: found?.title || `Patch ${label}`, image: found?.image || null, date: found?.date || null, sections: [], source: 'none' };
+}
+
+async function getPatches() {
+  let versions = await dd('/api/versions.json', 3600).catch(() => null);
+  if (!versions) {
+    const st = await getStatic().catch(() => null);
+    versions = st ? [st.version] : [];
+  }
+  const files = await fsp.readdir(DATA_DIR).catch(() => []);
+  const labels = new Map();
+  for (const v of versions) {
+    if (!/^\d+\.\d+/.test(v)) continue;
+    const label = patchLabel(patchOf(v));
+    if (!labels.has(label)) labels.set(label, { patch: label, dd: v });
+    if (labels.size >= 12) break;
+  }
+  for (const f of files) {
+    const m = f.match(/^patchnotes-(\d{2}\.\d{1,2})\.json$/);
+    if (m && !labels.has(m[1])) labels.set(m[1], { patch: m[1], dd: null });
+  }
+  const idx = await notesIndex();
+  const list = [...labels.values()].sort((a, b) => cmpPatch(b.patch, a.patch)).slice(0, 12);
+  for (const x of list) {
+    x.url = idx[x.patch]?.url || guessUrls(x.patch)[0];
+    const n = await readJson(path.join(DATA_DIR, `patchnotes-${x.patch}.json`), null);
+    if (n) {
+      x.date = n.date || null;
+      x.image = n.image || null;
+      x.title = n.title || null;
+      const count = (re) => (n.sections || []).filter((s) => re.test(s.title)).reduce((t, s) => t + (s.entries || []).length, 0);
+      x.counts = { champs: count(/champion/i), items: count(/objet|item/i) };
+    }
+  }
+  return { current: list[0]?.patch || null, list };
+}
+
+// Comparaison de deux versions de Data Dragon.
+const STAT_FR = {
+  hp: 'PV', hpperlevel: 'PV par niveau', mp: 'Mana', mpperlevel: 'Mana par niveau', movespeed: 'Vitesse de déplacement',
+  armor: 'Armure', armorperlevel: 'Armure par niveau', spellblock: 'Résistance magique', spellblockperlevel: 'Résistance magique par niveau',
+  attackrange: 'Portée d’attaque', hpregen: 'Régénération des PV', hpregenperlevel: 'Régénération des PV par niveau',
+  mpregen: 'Régénération du mana', mpregenperlevel: 'Régénération du mana par niveau', attackdamage: 'Dégâts d’attaque',
+  attackdamageperlevel: 'Dégâts d’attaque par niveau', attackspeedperlevel: 'Vitesse d’attaque par niveau', attackspeed: 'Vitesse d’attaque',
+};
+const ITEM_STAT_FR = {
+  FlatHPPoolMod: 'PV', FlatMPPoolMod: 'Mana', FlatArmorMod: 'Armure', FlatSpellBlockMod: 'Résistance magique', FlatPhysicalDamageMod: 'Dégâts d’attaque',
+  FlatMagicDamageMod: 'Puissance', PercentAttackSpeedMod: 'Vitesse d’attaque', FlatCritChanceMod: 'Coups critiques', PercentMovementSpeedMod: 'Vitesse de déplacement',
+  FlatMovementSpeedMod: 'Vitesse de déplacement', PercentLifeStealMod: 'Vol de vie', FlatHPRegenMod: 'Régénération des PV', FlatMPRegenMod: 'Régénération du mana',
+};
+const arr = (a) => (Array.isArray(a) ? a.map((x) => Math.round(x * 100) / 100).join(' / ') : String(a ?? ''));
+
+async function getPatchDiff(label) {
+  if (!/^\d{2}\.\d{1,2}$/.test(label)) throw new ApiError(400, 'Patch invalide.');
+  const file = path.join(DATA_DIR, `ddiff-${label}.json`);
+  const saved = await readJson(file, null);
+  if (saved) return saved;
+  const versions = await dd('/api/versions.json', 3600);
+  const target = ddOfLabel(label);
+  const i = versions.findIndex((v) => patchOf(v) === target);
+  if (i < 0) throw new ApiError(404, 'Version inconnue de Data Dragon.');
+  const prev = versions.slice(i + 1).find((v) => patchOf(v) !== target);
+  if (!prev) throw new ApiError(404, 'Pas de version précédente à comparer.');
+  const cur = versions[i];
+  const get = (v, f) => dd(`/cdn/${v}/data/${LANG}/${f}.json`, 300);
+  const [A, B, IA, IB] = await Promise.all([get(prev, 'championFull'), get(cur, 'championFull'), get(prev, 'item'), get(cur, 'item')]);
+  const champions = [];
+  const newChamps = [];
+  for (const [id, c] of Object.entries(B.data || {})) {
+    const o = A.data?.[id];
+    if (!o) {
+      newChamps.push({ id, key: Number(c.key), name: c.name });
+      continue;
+    }
+    const lines = [];
+    let up = 0;
+    let down = 0;
+    for (const [k, label2] of Object.entries(STAT_FR)) {
+      if (o.stats?.[k] === undefined || c.stats?.[k] === undefined || o.stats[k] === c.stats[k]) continue;
+      lines.push({ g: 'Statistiques de base', t: `${label2} : ${arr(o.stats[k])} → ${arr(c.stats[k])}` });
+      if (c.stats[k] > o.stats[k]) up++;
+      else down++;
+    }
+    (c.spells || []).forEach((s, n) => {
+      const os = o.spells?.[n];
+      if (!os) return;
+      const head = `${'QWER'[n]} – ${s.name}`;
+      for (const [f, lab, lower] of [['cooldown', 'Délai de récupération', true], ['cost', 'Coût', true], ['range', 'Portée', false]]) {
+        const x = JSON.stringify(os[f]);
+        const y = JSON.stringify(s[f]);
+        if (x === y || s[f] === undefined) continue;
+        if (f === 'range' && (s.range || []).some((r) => r >= 25000)) continue;
+        lines.push({ g: head, t: `${lab} : ${arr(os[f])} → ${arr(s[f])}` });
+        const sa = (os[f] || []).reduce((t, v) => t + v, 0);
+        const sb = (s[f] || []).reduce((t, v) => t + v, 0);
+        if (sb !== sa) (lower ? sb < sa : sb > sa) ? up++ : down++;
+      }
+    });
+    if (lines.length) champions.push({ id, key: Number(c.key), name: c.name, kind: up && !down ? 'buff' : down && !up ? 'nerf' : 'adjust', lines });
+  }
+  const items = [];
+  const newItems = [];
+  const sr = (it) => it?.maps?.['11'] && it.gold?.purchasable !== false && it.inStore !== false && !it.hideFromAll;
+  for (const [id, it] of Object.entries(IB.data || {})) {
+    if (!sr(it)) continue;
+    const o = IA.data?.[id];
+    if (!o || !sr(o)) {
+      newItems.push({ id: Number(id), name: it.name });
+      continue;
+    }
+    const lines = [];
+    let up = 0;
+    let down = 0;
+    if (o.gold?.total !== it.gold?.total) {
+      lines.push(`Coût total : ${o.gold?.total} → ${it.gold?.total} po`);
+      it.gold.total < o.gold.total ? up++ : down++;
+    }
+    const keys = new Set([...Object.keys(o.stats || {}), ...Object.keys(it.stats || {})]);
+    for (const k of keys) {
+      const a = o.stats?.[k] || 0;
+      const b = it.stats?.[k] || 0;
+      if (a === b) continue;
+      const pctStat = /^Percent/.test(k);
+      const f = (v) => (pctStat ? `${Math.round(v * 1000) / 10} %` : String(Math.round(v * 100) / 100));
+      lines.push(`${ITEM_STAT_FR[k] || k} : ${f(a)} → ${f(b)}`);
+      b > a ? up++ : down++;
+    }
+    if (lines.length) items.push({ id: Number(id), name: it.name, kind: up && !down ? 'buff' : down && !up ? 'nerf' : 'adjust', lines });
+  }
+  const removedItems = Object.entries(IA.data || {})
+    .filter(([id, it]) => sr(it) && !sr(IB.data?.[id]))
+    .map(([id, it]) => ({ id: Number(id), name: it.name }));
+  const out = { patch: label, from: prev, to: cur, champions, newChamps, items, newItems, removedItems, at: Date.now() };
+  await writeJson(file, out).catch(() => {});
+  return out;
 }
 
 /* ---------- Augments (Arena et ARAM du chaos), noms via Community Dragon ---------- */
@@ -1706,19 +2308,79 @@ async function addPro(body) {
   const [name, tag] = splitRiotId(String(body?.riotId || '').trim());
   const label = String(body?.label || '').trim().slice(0, 24);
   const team = String(body?.team || '').trim().slice(0, 12);
+  const kind = body?.kind === 'streamer' ? 'streamer' : 'pro';
+  const twitch = String(body?.twitch || '').trim().replace(/^https?:\/\/(www\.)?twitch\.tv\//i, '').replace(/[^\w]/g, '').slice(0, 25);
   if (!name || !tag) throw new ApiError(400, 'Riot ID incomplet : utilise le format Nom#TAG.');
   const acc = await riot(accountHost(platform), `/riot/account/v1/accounts/by-riot-id/${enc(name)}/${enc(tag)}`, { ttl: 3600 });
   if (!acc) throw new ApiError(404, `Aucun compte « ${name}#${tag} ».`);
   const list = (await readPros()).filter((x) => x.puuid !== acc.puuid);
-  list.push({ puuid: acc.puuid, platform, riotId: `${acc.gameName}#${acc.tagLine}`, label: label || acc.gameName, team });
+  list.push({ puuid: acc.puuid, platform, riotId: `${acc.gameName}#${acc.tagLine}`, label: label || acc.gameName, team, kind, twitch });
   await writeJson(prosFile, list);
+  knownMem = null;
   return list;
 }
 
 async function removePro(puuid) {
   const list = (await readPros()).filter((x) => x.puuid !== puuid);
   await writeJson(prosFile, list);
+  knownMem = null;
   return list;
+}
+
+/* ---------- Pros et streamers reconnus ---------- */
+// Riot ne dit pas qui est pro ou streamer. Trois sources, dans l'ordre :
+// 1. les pros et streamers suivis (ajoutés depuis la tier list, fichier pros.json) ;
+// 2. la liste pros-list.json (seed/ puis data/), modifiable à la main ;
+// 3. la détection par le pseudo : « ttv », « twtv », « twitch »… (streamers).
+const knownFile = path.join(DATA_DIR, 'pros-list.json');
+let knownMem = null;
+async function knownList() {
+  if (knownMem && Date.now() - knownMem.at < 60e3) return knownMem.list;
+  const [list, followed] = await Promise.all([readJson(knownFile, []), readPros()]);
+  const byId = new Map();
+  const byName = new Map();
+  const entry = (x) => ({
+    kind: x.kind === 'streamer' ? 'streamer' : 'pro',
+    label: String(x.label || '').slice(0, 24),
+    team: String(x.team || '').slice(0, 12),
+    twitch: /^\w{3,25}$/.test(x.twitch || '') ? x.twitch : '',
+  });
+  for (const x of Array.isArray(list) ? list : []) {
+    if (!x || (!x.name && !x.puuid)) continue;
+    const e = entry(x);
+    if (x.puuid) byId.set(x.puuid, e);
+    if (x.name) byName.set(`${x.name}#${x.tag || '*'}`.toLowerCase(), e);
+  }
+  for (const x of followed) {
+    const e = entry(x);
+    if (x.puuid) byId.set(x.puuid, e);
+    if (x.riotId) byName.set(String(x.riotId).toLowerCase(), e);
+  }
+  knownMem = { at: Date.now(), list: { byId, byName } };
+  return knownMem.list;
+}
+const STREAM_PREFIX = /^(?:ttv|twtv|twitch(?=[\s._-])|kick(?=[\s._-])|tv(?=[\s._-]))[\s._-]*(.{2,})$/i;
+const STREAM_SUFFIX = /^(.{2,}?)[\s._-]+(?:ttv|twtv|twitch)$/i;
+function whoIs(K, puuid, name, tag) {
+  const n = String(name || '').trim();
+  const hit = (puuid && K.byId.get(puuid)) || (n && (K.byName.get(`${n}#${tag || ''}`.toLowerCase()) || K.byName.get(`${n}#*`.toLowerCase())));
+  if (hit) return hit;
+  if (!n) return null;
+  const m = n.match(STREAM_PREFIX) || n.match(STREAM_SUFFIX) || (/^(ttv|twtv|twitch|kick)$/i.test(tag || '') ? [n, n] : null);
+  if (!m) return null;
+  const handle = m[1].replace(/[\s.-]+/g, '').toLowerCase();
+  return { kind: 'streamer', label: '', team: '', twitch: /^\w{3,25}$/.test(handle) ? handle : '', guess: true };
+}
+// Ajoute r.pro aux lignes reconnues. f(r) renvoie [puuid, nom, tag].
+async function tagKnown(rows, f = (r) => [r.puuid, r.name, r.tag]) {
+  const K = await knownList().catch(() => ({ byId: new Map(), byName: new Map() }));
+  for (const r of rows || []) {
+    if (!r) continue;
+    const [pu, n, t] = f(r);
+    const w = whoIs(K, pu, n, t);
+    if (w) r.pro = w;
+  }
+  return rows;
 }
 
 /* ---------- Collecte ---------- */
@@ -1813,11 +2475,16 @@ route('GET', new RegExp(`^/api/status/${P}$`), (m) => getStatus(plat(m[1])));
 route('GET', new RegExp(`^/api/ladder/${P}$`), (m, q) => getLadder(m[1] === 'world' ? 'world' : plat(m[1]), q.queue, q.page));
 route('GET', /^\/api\/ladder-id$/, (m, q) => getLadderIdentity(q.ids));
 route('GET', /^\/api\/ladder-stats$/, (m, q) => getLadderStats(q.ids));
-route('GET', /^\/api\/players$/, (m, q) => searchPlayers(q.q, q.p));
+route('GET', /^\/api\/players$/, (m, q) => tagKnown(searchPlayers(q.q, q.p)));
 route('GET', new RegExp(`^/api/accounts/${P}$`), (m, q) => getAccounts(plat(m[1]), q.puuids));
 route('GET', new RegExp(`^/api/meta/${P}$`), (m, q) => metaSummary(plat(m[1]), modeOf(q.mode)));
 route('GET', new RegExp(`^/api/meta/${P}/champion/(\\d+)$`), (m, q) => metaChampion(plat(m[1]), Number(m[2]), q.patch, modeOf(q.mode)));
 route('GET', /^\/api\/augments$/, () => getAugments());
+route('GET', new RegExp(`^/api/otp/${P}$`), (m, q) => getOtp(plat(m[1]), q));
+route('GET', new RegExp(`^/api/matchup/${P}$`), (m, q) => getMatchup(plat(m[1]), q));
+route('GET', /^\/api\/patches$/, () => getPatches());
+route('GET', /^\/api\/patch-notes\/(\d{2}\.\d{1,2})$/, (m) => getPatchNotes(m[1]));
+route('GET', /^\/api\/patch-diff\/(\d{2}\.\d{1,2})$/, (m) => getPatchDiff(m[1]));
 route('POST', new RegExp(`^/api/meta/${P}/start$`), (m, q) => {
   const p = plat(m[1]);
   if (!KEY) throw new ApiError(500, 'Aucune clé API : ajoute RIOT_API_KEY=... dans le fichier .env puis relance le serveur.');
@@ -1832,8 +2499,11 @@ route('POST', new RegExp(`^/api/meta/${P}/stop$`), (m, q) => {
   return metaSummary(p, modeOf(q.mode));
 });
 route('GET', /^\/api\/pros$/, () => readPros());
-route('POST', /^\/api\/pros$/, (m, q, body) => addPro(body));
-route('DELETE', /^\/api\/pros\/([\w-]+)$/, (m) => removePro(m[1]));
+const noDemo = () => {
+  if (DEMO_ON) throw new ApiError(403, 'Modification désactivée sur la version de démonstration.');
+};
+route('POST', /^\/api\/pros$/, (m, q, body) => (noDemo(), addPro(body)));
+route('DELETE', /^\/api\/pros\/([\w-]+)$/, (m) => (noDemo(), removePro(m[1])));
 
 /* ------------------------------------------------------------------ */
 /* Serveur HTTP                                                        */
@@ -1856,7 +2526,7 @@ const MIME = {
 const IMG_SRC = ['https://ddragon.leagueoflegends.com', DDRAGON].filter((v, i, a) => a.indexOf(v) === i).join(' ');
 const CSP = [
   "default-src 'self'",
-  `img-src 'self' data: ${IMG_SRC} https://raw.communitydragon.org`,
+  `img-src 'self' data: ${IMG_SRC} https://raw.communitydragon.org https://cmsassets.rgpub.io`,
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self'",
   "script-src 'self'",

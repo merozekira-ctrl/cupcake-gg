@@ -7,6 +7,9 @@ import * as Champions from './views/champions.js';
 import * as Ladder from './views/ladder.js';
 import * as Multi from './views/multi.js';
 import * as Wiki from './views/wiki.js';
+import * as Otp from './views/otp.js';
+import * as Matchups from './views/matchups.js';
+import * as Patch from './views/patch.js';
 
 const view = document.getElementById('view');
 let cleanup = null;
@@ -48,6 +51,33 @@ document.addEventListener(
   },
   true
 );
+
+/* ---------- Menu « Classements » ---------- */
+
+const dd = document.getElementById('navRank');
+const ddBtn = dd.querySelector('button');
+const setDd = (open) => {
+  dd.classList.toggle('open', open);
+  ddBtn.setAttribute('aria-expanded', String(open));
+};
+ddBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  setDd(!dd.classList.contains('open'));
+});
+dd.addEventListener('mouseenter', () => window.matchMedia('(hover: hover)').matches && setDd(true));
+dd.addEventListener('mouseleave', () => window.matchMedia('(hover: hover)').matches && setDd(false));
+dd.addEventListener('click', (e) => {
+  if (e.target.closest('a')) setDd(false);
+});
+document.addEventListener('click', (e) => {
+  if (!dd.contains(e.target)) setDd(false);
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && dd.classList.contains('open')) {
+    setDd(false);
+    ddBtn.focus();
+  }
+});
 
 /* ---------- Recherche (palette Ctrl+K) ---------- */
 
@@ -112,7 +142,7 @@ function parseHash() {
   return { segs, path, query: Object.fromEntries(new URLSearchParams(qs || '')) };
 }
 
-const NAV = { champions: 'champions', champion: 'champions', classement: 'classement', multi: 'multi', wiki: 'wiki' };
+const NAV = { champions: 'champions', champion: 'champions', classement: 'classements', otp: 'classements', matchups: 'matchups', patch: 'patch', multi: 'multi', wiki: 'wiki' };
 
 async function router() {
   const { segs, path, query } = parseHash();
@@ -144,7 +174,11 @@ async function router() {
   document.body.classList.toggle('is-home', page === '');
   document.querySelectorAll('.nav a').forEach((a) => a.removeAttribute('aria-current'));
   const navKey = page === 'champions' && query.vue === 'tous' ? 'liste' : NAV[page];
-  if (navKey) document.querySelector(`.nav a[data-nav="${navKey}"]`)?.setAttribute('aria-current', 'page');
+  if (navKey) document.querySelector(`.nav > a[data-nav="${navKey}"]`)?.setAttribute('aria-current', 'page');
+  dd.classList.toggle('current', navKey === 'classements');
+  const sub = page === 'otp' ? 'otp' : page === 'classement' ? (query.queue === 'flex' ? 'flex' : 'solo') : '';
+  if (sub) dd.querySelector(`a[data-sub="${sub}"]`)?.setAttribute('aria-current', 'page');
+  setDd(false);
   if (dialog.open) dialog.close();
 
   try {
@@ -166,6 +200,15 @@ async function router() {
         break;
       case 'multi':
         cleanup = await Multi.render(view, {}, ctx);
+        break;
+      case 'otp':
+        cleanup = await Otp.render(view, { p: segs[1] }, ctx);
+        break;
+      case 'matchups':
+        cleanup = await Matchups.render(view, { p: segs[1] }, ctx);
+        break;
+      case 'patch':
+        cleanup = await Patch.render(view, { v: segs[1] }, ctx);
         break;
       case 'wiki':
         cleanup = await Wiki.render(view, { tab: segs[1] || 'objets' }, ctx);

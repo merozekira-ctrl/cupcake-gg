@@ -1,9 +1,10 @@
 // Recherche unifiée : joueurs (Riot ID) et champions, au clavier comme à la souris.
-import { S, esc, store, norm, champImg, champHref, playerHref, profileImg, parseRiotId, DEFAULT_TAG, CLASSES } from './core.js';
+import { S, api, esc, store, norm, champImg, champHref, playerHref, profileImg, parseRiotId, DEFAULT_TAG, CLASSES, proBadge } from './core.js';
 
 let uid = 0;
+const TIERS_FR = { IRON: 'Fer', BRONZE: 'Bronze', SILVER: 'Argent', GOLD: 'Or', PLATINUM: 'Platine', EMERALD: 'Émeraude', DIAMOND: 'Diamant', MASTER: 'Maître', GRANDMASTER: 'Grand Maître', CHALLENGER: 'Challenger' };
 
-function results(q, region) {
+function results(q, region, remote = []) {
   const raw = q.trim();
   const out = [];
   const people = [...store.get('favs', []).map((x) => ({ ...x, fav: true })), ...store.get('recent', [])];
@@ -12,7 +13,7 @@ function results(q, region) {
     const k = `${x.p}|${x.name}|${x.tag}`.toLowerCase();
     if (seenPeople.has(k)) return;
     seenPeople.add(k);
-    out.push({ type: 'player', p: x.p, name: x.name, tag: x.tag, icon: x.icon, note: x.fav ? 'Favori' : 'Récent' });
+    out.push({ type: 'player', p: x.p, name: x.name, tag: x.tag, icon: x.icon, pro: x.pro || null, note: x.note || (x.fav ? 'Favori' : 'Récent') });
   };
 
   if (!raw) {
@@ -28,6 +29,8 @@ function results(q, region) {
     out.push({ type: 'player', p: region, name: known?.name || name, tag: known?.tag || tag, icon: known?.icon, note: 'Ouvrir le profil' });
   }
 
+  // Joueurs connus du serveur dont le nom commence par / contient la saisie.
+  for (const x of remote) addPerson({ ...x, note: x.tier ? `${TIERS_FR[x.tier] || x.tier}${x.lp != null && ['MASTER', 'GRANDMASTER', 'CHALLENGER'].includes(x.tier) ? ` ${x.lp} LP` : ''}` : 'Joueur' });
   const n = norm(raw.replace(/#.*$/, ''));
   if (n) {
     const champs = Object.values(S.st.champions)
@@ -62,7 +65,7 @@ function optionHtml(r, id, active) {
   const region = S.cfg.platforms[r.p]?.label || r.p;
   return `<li role="option" id="${id}" class="omni-opt${active ? ' is-active' : ''}" aria-selected="${active}">
     ${r.icon != null ? profileImg(r.icon, 32, true) : '<span class="omni-person" aria-hidden="true"></span>'}
-    <span class="omni-main"><b>${esc(r.name)}<span class="muted">#${esc(r.tag)}</span></b><small>${esc(r.note)}</small></span>
+    <span class="omni-main"><b>${esc(r.name)}<span class="muted">#${esc(r.tag)}</span></b><small>${r.pro ? proBadge(r.pro) + ' ' : ''}${esc(r.note)}</small></span>
     <span class="omni-kind">${esc(region)}</span>
   </li>`;
 }
@@ -89,12 +92,35 @@ export function bindOmni(input, list, opts) {
 
   let items = [];
   let active = 0;
+  let remote = [];
+  let remoteQ = '';
+  let timer = null;
+  const fetchRemote = () => {
+    clearTimeout(timer);
+    const q = input.value.trim();
+    if (q.replace(/#.*$/, '').length < 2 || !S.cfg?.hasKey) {
+      remote = [];
+      remoteQ = '';
+      return;
+    }
+    timer = setTimeout(async () => {
+      try {
+        const r = await api(`/players?q=${encodeURIComponent(q)}&p=${opts.region()}`);
+        if (input.value.trim() !== q) return;
+        remote = r;
+        remoteQ = q;
+        if (!list.hidden) paint();
+      } catch {
+        /* annuaire indisponible */
+      }
+    }, 180);
+  };
   const open = (on) => {
     list.hidden = !on;
     input.setAttribute('aria-expanded', String(on));
   };
   const paint = () => {
-    items = results(input.value, opts.region());
+    items = results(input.value, opts.region(), remoteQ && input.value.trim().toLowerCase().startsWith(remoteQ.toLowerCase().slice(0, 2)) ? remote : []);
     if (active >= items.length) active = 0;
     if (!items.length) {
       list.innerHTML = input.value.trim()
@@ -127,6 +153,7 @@ export function bindOmni(input, list, opts) {
   input.addEventListener('input', () => {
     active = 0;
     paint();
+    fetchRemote();
   });
   input.addEventListener('focus', paint);
   input.addEventListener('keydown', (e) => {

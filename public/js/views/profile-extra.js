@@ -1,5 +1,5 @@
 // Profil : score cupcake, jauge, graphiques, rank IA, regroupement par jour, champions mis en avant.
-import { esc, num, dec, pct, kdaRatio, kdaText, champImg, champOf, champHref, isArena, scoreMatch, crest, rankText, wrBadge, wrTier, levelRing, TIERS } from '../core.js';
+import { esc, num, dec, pct, kdaRatio, kdaText, champImg, champOf, champHref, isArena, scoreMatch, crest, rankText, wrBadge, wrTier, levelRing, allyLevel, TIERS } from '../core.js';
 
 /* ---------- Statistiques par partie ---------- */
 
@@ -135,7 +135,7 @@ export function rankIa(sum, games) {
   // Indice entre -1 et 1 : 45 % place dans la partie, 25 % score, 20 % winrate, 10 % KDA.
   const z =
     0.45 * ((5.5 - avgPlace) / 4.5) +
-    0.25 * ((avgScore - 45) / 35) +
+    0.25 * ((avgScore - 48) / 35) +
     0.2 * ((wr - 0.5) * 3) +
     0.1 * Math.max(-1, Math.min(1, (Math.min(kda, 8) - 3) / 3));
   const conf = Math.min(1, n / 20);
@@ -222,7 +222,7 @@ export function summaryBlock(sm, games) {
       <span class="row" style="gap:5px">${mvp ? `<span class="badge gold">MVP ×${mvp}</span>` : ''}${ace ? `<span class="badge ace">ACE ×${ace}</span>` : ''}</span>
     </div>
     <div class="st st-score"><div class="sum-label">Score cupcake</div>${scoreBig(score)}<small class="st-hint">performance sur 100 (KDA, dégâts, or, vision…)</small></div>
-    ${allies == null ? '' : `<div class="st st-allies"><div class="sum-label">Niveau des alliés</div>${levelRing(allies, { size: 'lg', avatar: true })}<small class="st-hint">sur les ${Math.min(10, games.length)} dernières parties</small></div>`}`;
+    ${allies == null ? '' : `<div class="st st-allies"><div class="sum-label">Niveau des alliés</div>${levelRing(allyLevel(allies), { size: 'lg', avatar: true })}<small class="st-hint">sur les ${Math.min(10, games.length)} dernières parties</small></div>`}`;
 }
 const scoreBig = (v) => `<span class="score score-lg${v >= 80 ? ' s-hi' : ''}" style="--p:${v};--c:${v >= 60 ? 'var(--wr4)' : v >= 45 ? 'var(--wr3)' : v >= 30 ? 'var(--wr1)' : 'var(--wr0)'}"><b>${v}</b></span>`;
 

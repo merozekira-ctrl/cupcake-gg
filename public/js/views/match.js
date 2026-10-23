@@ -43,8 +43,8 @@ export function matchCard(m, puuid, platform) {
   const tk = groupKills(m, me);
   const ratio = kdaRatio(me.k, me.d, me.a);
   const champ = champOf(me.champ);
-  // Partie légendaire : MVP et score de 90 ou plus.
-  const legend = !m.remake && res.cls === 'win' && idx === sc.mvp && sc.scores[idx] * 10 >= 90;
+  // Partie légendaire : victoire, MVP et score de 85 ou plus.
+  const legend = !m.remake && res.cls === 'win' && idx === sc.mvp && sc.scores[idx] * 10 >= 85;
 
   const badges = [];
   if (legend) badges.push(`<span class="badge gold" title="MVP avec un score de ${Math.round(sc.scores[idx] * 10)} sur 100">MVP</span>`);
@@ -57,7 +57,7 @@ export function matchCard(m, puuid, platform) {
   let teams = '';
   if (!isArena(m.q)) {
     const li = (p) =>
-      `<li class="${p.puuid === puuid ? 'me' : ''}${p.pro && !p.pro.guess ? ' pro' : ''}">${champImg(p.champ, 16)}${playerLink(platform, p)}</li>`;
+      `<li class="${p.puuid === puuid ? 'me' : ''}${p.pro && p.pro.kind === 'pro' ? ' pro' : ''}">${champImg(p.champ, 16)}${playerLink(platform, p)}</li>`;
     teams = `<div class="m-teams" aria-label="Joueurs de la partie">
       <ul>${m.parts.filter((p) => p.team === 100).map(li).join('')}</ul>
       <ul>${m.parts.filter((p) => p.team === 200).map(li).join('')}</ul>
@@ -203,7 +203,7 @@ function playerRow(m, p, i, ctx) {
   const items = p.items.slice(0, 7);
   while (items.length < 7) items.push(0);
   const it = (x) => (x ? itemImg(x, 22) : '<span class="sb-empty"></span>');
-  const pro = p.pro && !p.pro.guess ? ' is-pro' : '';
+  const pro = p.pro && p.pro.kind === 'pro' ? ' is-pro' : '';
   const sub = isArena(m.q) ? `<small>${ordinal(p.place || 0)} place</small>` : `<small class="sb-rank" data-rk="${esc(p.puuid || '')}"><span class="sb-sk"></span></small>`;
   return `<div class="sb-row${p.puuid === puuid ? ' me' : ''}${p.win ? ' w' : ' l'}">
     ${place}
@@ -232,11 +232,11 @@ function fillRanks(root, m, platform) {
       const apex = ['MASTER', 'GRANDMASTER', 'CHALLENGER'].includes(r.tier);
       el.innerHTML = `${crest(r, 'xs')}<span>${apex ? `${num(r.lp)} LP` : `${esc(rankText(r))} · ${num(r.lp)} LP`}</span>`;
       el.title = `${rankText(r)} ${r.lp} LP${r.q === 'flex' ? ' (Flex)' : ''}`;
-      if (r.pro && !r.pro.guess) {
+      if (r.pro) {
         const row = el.closest('.sb-row');
         const n = row?.querySelector('.sb-n');
         if (n && !n.querySelector('.who')) {
-          n.classList.add('is-pro');
+          if (r.pro.kind === 'pro') n.classList.add('is-pro');
           n.insertAdjacentHTML('beforeend', proBadge(r.pro));
         }
       }

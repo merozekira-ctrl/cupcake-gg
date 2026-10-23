@@ -6,7 +6,7 @@ import {
 } from '../core.js';
 import { matchCard, bindMatchList, resultOf } from './match.js';
 import { gameStats, chartPanel, rankIa, summaryBlock, dayHeader, groupByDay, champHighlights } from './profile-extra.js';
-import { roleBar, scoreMatch, levelRing } from '../core.js';
+import { roleBar, scoreMatch, levelRing, allyLevel } from '../core.js';
 
 const cache = new Map();
 const MATE_IC = new Map();
@@ -453,7 +453,7 @@ function drawOverview(body, st, ctx) {
       : '<p class="muted small" style="padding:0 16px 16px">Pas encore de parties chargées.</p>';
     body.querySelector('#duos').innerHTML = sm.mateList.length
       ? `<ul class="mini-list">${sm.mateList
-          .map((x) => `<li>${MATE_IC.has(x.puuid) && MATE_IC.get(x.puuid) != null ? profileImg(MATE_IC.get(x.puuid), 34, true) : `<span class="mate-ic skel" data-mate="${esc(x.puuid)}"></span>`}<div class="nm"><a href="${playerHref(s.platform, x.name, x.tag)}">${esc(x.name)}</a><div class="sub">#${esc(x.tag)}</div></div><div class="val"><b>${x.w}V ${x.n - x.w}D</b><div class="sub">${pct(x.w, x.n)}</div></div>${levelRing(x.sc / x.n, { size: 'sm', avatar: true })}</li>`)
+          .map((x) => `<li>${MATE_IC.has(x.puuid) && MATE_IC.get(x.puuid) != null ? profileImg(MATE_IC.get(x.puuid), 34, true) : `<span class="mate-ic skel" data-mate="${esc(x.puuid)}"></span>`}<div class="nm"><a href="${playerHref(s.platform, x.name, x.tag)}">${esc(x.name)}</a><div class="sub">#${esc(x.tag)}</div></div><div class="val"><b>${x.w}V ${x.n - x.w}D</b><div class="sub">${pct(x.w, x.n)}</div></div>${levelRing(allyLevel(x.sc / x.n), { size: 'sm', avatar: true })}</li>`)
           .join('')}</ul>`
       : '<p class="muted small" style="padding:0 16px 16px">Aucun joueur croisé au moins deux fois dans les parties chargées.</p>';
     const missing = sm.mateList.filter((x) => !MATE_IC.has(x.puuid));

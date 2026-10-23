@@ -398,8 +398,8 @@ export function scoreMatch(m) {
     let rel = 0;
     for (const k in W) rel += W[k] * Math.min(1, x[k] / max[k]);
     const p = m.parts[i];
-    // Barème exigeant : 0,25 de « relatif » = 0, 0,90 = 100. Une partie moyenne tourne autour de 40-50.
-    let v = (rel - 0.25) / 0.65;
+    // Barème exigeant : 0,24 de « relatif » = 0, 0,86 = 100. Une partie moyenne tourne autour de 45-50.
+    let v = (rel - 0.24) / 0.62;
     // Morts : au-delà de 5, chaque mort coûte 3 points (15 max).
     if (!arena) v -= Math.min(0.15, Math.max(0, p.d - 5) * 0.03);
     v += arena ? (p.place && p.place <= 2 ? 0.04 : 0) : p.win ? 0.04 : 0;
@@ -511,3 +511,8 @@ export function levelAvatar(step, size = 48) {
     </g>
   </svg>`;
 }
+
+// Niveau des alliés : comparé à un coéquipier moyen (score moyen ≈ 48 → 50 % « Humain »).
+// Un allié à 60 de score moyen donne ~75 %, à 30 ~28 %.
+export const ALLY_AVG = 48;
+export const allyLevel = (avgScore) => Math.max(0, Math.min(100, 50 + (avgScore - ALLY_AVG) * 1.6));

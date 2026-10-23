@@ -1342,3 +1342,30 @@ a.who-pro:hover { filter: brightness(1.2); transform: translateY(-1px); }
 .ally-panel p { margin: 0; }
 .ally-panel .lvr-av.lvr-lg { flex-direction: row; gap: 12px; }
 .ally-panel .lvr-lg.lvr-av .score { width: 70px; height: 70px; }
+
+/* Tier list de l'accueil : vignette rectangulaire, fondu vers la droite */
+.hc-art { position: relative; flex-shrink: 0; width: 64px; height: 38px; border-radius: 8px; overflow: hidden; }
+.hc-art img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 18%; -webkit-mask-image: linear-gradient(90deg, #000 55%, rgba(0, 0, 0, 0.35)); mask-image: linear-gradient(90deg, #000 55%, rgba(0, 0, 0, 0.35)); }
+
+/* Résumé : tuiles remplies et centrées verticalement */
+.summary { grid-template-columns: 170px minmax(220px, 1.4fr) minmax(200px, 1.15fr) minmax(160px, 0.95fr) minmax(150px, 0.9fr) !important; }
+.summary .st { align-content: center; padding: 20px 16px; gap: 8px; }
+.summary .gauge { max-width: 156px; }
+.summary .gauge-wl { font-size: 14px; }
+.summary .st-ch { gap: 6px; }
+.summary .st-champ { grid-template-columns: 44px 1fr; padding: 3px 0; }
+.summary .st-champ > img, .summary .st-champ > .ic { width: 44px !important; height: 44px !important; }
+.summary .stc-wr { font-size: 18px; }
+.summary .stc-rec { font-size: 14px; }
+.summary .stc-l2 { font-size: 13px; }
+.summary .stc-kda { font-size: 14px; }
+.summary .st-big { font-size: 40px; }
+.summary .kda3 span b { font-size: 17px; }
+.summary .score-lg { width: 76px; height: 76px; }
+.summary .score-lg b { font-size: 24px; }
+.summary .st-hint { font-size: 12px; }
+.summary .sum-label { font-size: 12px; }
+@media (max-width: 1280px) {
+  .summary { grid-template-columns: minmax(150px, 0.8fr) minmax(220px, 1.4fr) minmax(200px, 1.2fr) !important; }
+}
+@media (max-width: 700px) { .summary { grid-template-columns: 1fr 1fr !important; } }

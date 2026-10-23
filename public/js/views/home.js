@@ -2,7 +2,7 @@
 import {
   S, api, esc, store, champImg, champOf, champByKey, champHref, crest, rankText, playerHref, profileImg,
   regionOptions, setPlatform, removeRecent, toggleFav, setTitle, loading, ago, roleIcon, roleBar, ROLES,
-  wrBadge, proBadge, patchLabel, num, pct,
+  wrBadge, proBadge, patchLabel, num, pct, loadingUrl,
 } from '../core.js';
 import { bindOmni } from '../omni.js';
 import { tierRows } from './champions.js';
@@ -191,7 +191,7 @@ function drawTierPreview(el, meta) {
       ? `<div class="hc-cols"><span>Champion</span><span>Tier</span><span>Winrate</span><span>Pick</span></div>${rows
           .map(
             (r) => `<a class="hc-row" href="${champHref(r.champ, role)}">
-              <span class="hc-who">${champImg(r.id, 38)}<span><b>${esc(r.champ.name)}</b><small>${num(r.c.g)} parties</small></span></span>
+              <span class="hc-who"><span class="hc-art"><img src="${esc(loadingUrl(r.champ.id))}" alt="" loading="lazy"></span><span><b>${esc(r.champ.name)}</b><small>${num(r.c.g)} parties</small></span></span>
               <span class="tier tier-${r.tier.replace('+', 'P')}">${r.tier}</span>
               <span class="hc-num">${wrBadge(r.c.w, r.c.g, { d: 1 })}</span>
               <span class="hc-num">${pct(r.pr, 1, 1)}</span>

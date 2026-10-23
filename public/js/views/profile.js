@@ -153,7 +153,7 @@ const rankLine = (r) => (r ? `${esc(rankText(r))} · ${num(r.lp)} LP` : '–');
 function peakPill(s) {
   const p = s.peak;
   if (!p) return '';
-  return `<a class="peak-pill" href="${playerHref(s.platform, s.name, s.tag, 'saisons')}" title="Meilleur rang Solo/Duo enregistré">${crest(p, 'xs')}<span><small>Peak</small><b>${rankLine(p)}</b></span><em>Saison ${esc(p.season)}</em></a>`;
+  return `<a class="peak-pill" href="${playerHref(s.platform, s.name, s.tag, 'saisons')}" title="Rang le plus haut atteint cette saison">${crest(p, 'xs')}<span><small>Peak</small><b>${rankLine(p)}</b></span><em>${p.q === 'flex' ? 'Flex · ' : ''}Saison ${esc(p.season)}</em></a>`;
 }
 function seasonCell(box, label) {
   if (!box) return `<div class="ss-q ss-empty"><small>${label}</small><span class="muted">Aucune donnée</span></div>`;

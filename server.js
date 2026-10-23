@@ -783,16 +783,27 @@ async function recordPeaks(puuid, ranked) {
   return P;
 }
 // Saisons triées (plus récente d'abord) et meilleur rang Solo/Duo jamais enregistré.
-function seasonsView(P) {
+// Peak affiché sur le profil : meilleur rang + LP de la saison en cours (Solo/Duo ou Flex),
+// d'après les rangs enregistrés et l'historique de LP de cette saison, jamais sous le rang actuel.
+function seasonsView(P, history = [], ranked = {}) {
   const seasons = Object.entries(P || {})
     .map(([season, x]) => ({ season, solo: x.solo || null, flex: x.flex || null }))
     .sort((a, b) => b.season.localeCompare(a.season));
-  let peak = null;
-  for (const s of seasons) {
-    const p = s.solo?.peak;
-    if (p && (!peak || p.v > peak.v)) peak = { ...p, season: s.season, q: 'solo' };
+  const current = seasonOf(Date.now());
+  const cands = [];
+  const cur = seasons.find((x) => x.season === current);
+  if (cur?.solo?.peak) cands.push({ ...cur.solo.peak, q: 'solo' });
+  if (cur?.flex?.peak) cands.push({ ...cur.flex.peak, q: 'flex' });
+  for (const h of history || []) if (h?.tier && seasonOf(h.t) === current) cands.push({ tier: h.tier, rank: h.rank, lp: h.lp, v: h.v, t: h.t, q: 'solo' });
+  for (const q of ['solo', 'flex']) {
+    const r = ranked?.[q];
+    const v = r ? lpValue(r) : null;
+    if (v != null) cands.push({ tier: r.tier, rank: r.rank, lp: r.lp, v, t: Date.now(), q });
   }
-  return { seasons, peak, current: seasonOf(Date.now()) };
+  let peak = null;
+  for (const c of cands) if (c.v != null && (!peak || c.v > peak.v)) peak = c;
+  if (peak) peak = { ...peak, season: current };
+  return { seasons, peak, current };
 }
 
 async function getSummoner(platform, name, tag, force) {
@@ -837,8 +848,12 @@ async function getSummoner(platform, name, tag, force) {
     icon: sum.profileIconId,
     level: sum.summonerLevel,
     fetchedAt: Date.now(),
-    lpHistory: await recordLp(acc.puuid, compactLeague(league).solo).catch(() => []),
-    ...seasonsView(await recordPeaks(acc.puuid, compactLeague(league)).catch(() => null)),
+    ...(await (async () => {
+      const ranked = compactLeague(league);
+      const lpHistory = await recordLp(acc.puuid, ranked.solo).catch(() => []);
+      const all = (lpMem && lpMem[acc.puuid]) || lpHistory;
+      return { lpHistory, ...seasonsView(await recordPeaks(acc.puuid, ranked).catch(() => null), all, ranked) };
+    })()),
     ranked: compactLeague(league),
     mastery: (mastery || []).map((m) => ({
       c: m.championId,

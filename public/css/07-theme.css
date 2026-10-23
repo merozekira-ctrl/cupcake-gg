@@ -1326,3 +1326,19 @@ a.who-pro:hover { filter: brightness(1.2); transform: translateY(-1px); }
 /* Accueil : Favoris à gauche, Recherches récentes à droite, centrés */
 .home-grid.home-duo { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
 @media (max-width: 760px) { .home-grid.home-duo { grid-template-columns: 1fr; } }
+
+/* Résumé : 5 tuiles (le niveau des alliés est dans la colonne de gauche) */
+.summary { grid-template-columns: 130px minmax(190px, 1.35fr) minmax(180px, 1.15fr) minmax(140px, 0.95fr) minmax(130px, 0.9fr) !important; }
+@media (max-width: 1280px) {
+  .summary { grid-template-columns: minmax(130px, 0.8fr) minmax(200px, 1.4fr) minmax(190px, 1.2fr) !important; }
+  .summary .st-score { grid-column: span 2; }
+}
+@media (max-width: 700px) { .summary { grid-template-columns: 1fr 1fr !important; } .summary .st-score { grid-column: auto; } }
+.ally-panel .ally-in { display: flex; align-items: center; gap: 14px; padding: 0 16px 16px; }
+.ally-panel .lvr-av .score { width: 64px; height: 64px; }
+.ally-panel .lvr-av .score::before { inset: 4px; }
+.ally-panel .lvr-txt b { font-size: 18px; }
+.ally-panel .lvr-txt { justify-items: start; }
+.ally-panel p { margin: 0; }
+.ally-panel .lvr-av.lvr-lg { flex-direction: row; gap: 12px; }
+.ally-panel .lvr-lg.lvr-av .score { width: 70px; height: 70px; }

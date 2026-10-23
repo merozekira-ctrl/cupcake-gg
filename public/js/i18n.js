@@ -542,6 +542,7 @@ const PHRASES = {
   'Récent': 'Recent',
   'hier': 'yesterday',
   'NEW': 'NEW',
+  'Niveau moyen de tes coéquipiers selon leurs stats, de 0 % Déchu à 100 % GOAT.': 'Average level of your teammates based on their stats, from 0% Fallen to 100% GOAT.',
   'Ajouter 150 parties': 'Add 150 games',
   'Mot de passe': 'Password',
   'Lancer': 'Start',

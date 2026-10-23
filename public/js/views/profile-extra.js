@@ -191,18 +191,6 @@ export function summaryBlock(sm, games) {
   const mvp = games.filter((x) => x.mvp).length;
   const ace = games.filter((x) => x.ace).length;
   const kda = kdaRatio(k, d, a);
-  // Niveau moyen des alliés sur les 10 dernières parties (score cupcake de chaque coéquipier).
-  let allySum = 0;
-  let allyN = 0;
-  for (const g of games.slice(0, 10)) {
-    const sc = scoreMatch(g.m);
-    g.m.parts.forEach((p, i) => {
-      if (p === g.me || (g.arena ? p.sub !== g.me.sub : p.team !== g.me.team)) return;
-      allySum += sc.scores[i] * 10;
-      allyN++;
-    });
-  }
-  const allies = allyN ? allySum / allyN : null;
   return `
     <div class="st st-wr"><div class="sum-label">Victoires · ${n} parties</div>${gauge(w, n)}</div>
     <div class="st st-ch"><div class="sum-label">Champions les plus joués</div>
@@ -230,8 +218,7 @@ export function summaryBlock(sm, games) {
       <small class="st-hint">rang moyen parmi les 10 joueurs</small>
       <span class="row" style="gap:5px">${mvp ? `<span class="badge gold">MVP ×${mvp}</span>` : ''}${ace ? `<span class="badge ace">ACE ×${ace}</span>` : ''}</span>
     </div>
-    <div class="st st-score"><div class="sum-label">Score cupcake</div>${scoreBig(score)}<small class="st-hint">performance sur 100 (KDA, dégâts, or, vision…)</small></div>
-    ${allies == null ? '' : `<div class="st st-allies"><div class="sum-label">Niveau des alliés</div>${levelRing(allyLevel(allies), { size: 'lg', avatar: true })}<small class="st-hint">sur les ${Math.min(10, games.length)} dernières parties</small></div>`}`;
+    <div class="st st-score"><div class="sum-label">Score cupcake</div>${scoreBig(score)}<small class="st-hint">performance sur 100 (KDA, dégâts, or, vision…)</small></div>`;
 }
 const scoreBig = (v) => `<span class="score score-lg${v >= 80 ? ' s-hi' : ''}" style="--p:${v};--c:${v >= 60 ? 'var(--wr4)' : v >= 45 ? 'var(--wr3)' : v >= 30 ? 'var(--wr1)' : 'var(--wr0)'}"><b>${v}</b></span>`;
 
@@ -305,4 +292,23 @@ export function champHighlights(items, puuid, mastery) {
       return `<a class="chh chh-${k}" href="${c ? champHref(c) : '#/champions'}"><span><small>${label}</small><b>${esc(big)}</b><span>${esc(sub)}</span></span>${champImg(id, 64)}</a>`;
     })
     .join('')}</div>`;
+}
+
+/* ---------- Niveau des alliés (panneau de la colonne de gauche) ---------- */
+export function allyPanel(games) {
+  // Niveau moyen des alliés sur les 10 dernières parties (score cupcake de chaque coéquipier).
+  let allySum = 0;
+  let allyN = 0;
+  for (const g of games.slice(0, 10)) {
+    const sc = scoreMatch(g.m);
+    g.m.parts.forEach((p, i) => {
+      if (p === g.me || (g.arena ? p.sub !== g.me.sub : p.team !== g.me.team)) return;
+      allySum += sc.scores[i] * 10;
+      allyN++;
+    });
+  }
+  const allies = allyN ? allySum / allyN : null;
+  if (allies == null) return '';
+  return `<div class="panel-title"><h2>Niveau des alliés</h2><span class="muted small">${Math.min(10, games.length)} dernières parties</span></div>
+    <div class="ally-in">${levelRing(allyLevel(allies), { size: 'lg', avatar: true })}<p class="muted small">Niveau moyen de tes coéquipiers selon leurs stats, de 0 % Déchu à 100 % GOAT.</p></div>`;
 }

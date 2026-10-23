@@ -5,7 +5,7 @@ import {
   pushRecent, isFav, toggleFav, toast, errorState, loading, setTitle, setPlatform, TIERS, proBadge, wrBadge,
 } from '../core.js';
 import { matchCard, bindMatchList, resultOf } from './match.js';
-import { gameStats, chartPanel, rankIa, summaryBlock, dayHeader, groupByDay, champHighlights } from './profile-extra.js';
+import { gameStats, chartPanel, rankIa, summaryBlock, allyPanel, dayHeader, groupByDay, champHighlights } from './profile-extra.js';
 import { roleBar, scoreMatch, levelRing, allyLevel } from '../core.js';
 
 const cache = new Map();
@@ -404,6 +404,7 @@ function drawOverview(body, st, ctx) {
     <div class="profile-grid">
       <aside class="stack">
         <section class="panel" aria-label="Rangs classés">${rankCard('Classée Solo/Duo', s.ranked.solo)}${rankCard('Classée Flex', s.ranked.flex)}</section>
+        <section class="panel ally-panel" id="allyBox" hidden></section>
         <section class="panel chart-panel" id="chartBox" aria-label="Graphique">${loading()}</section>
         <section class="panel card-accent" id="iaBox" aria-label="Rank IA">${loading()}</section>
         <section class="panel card-accent" id="seasonBox" aria-label="Saison en cours">${seasonHtml(st)}</section>
@@ -477,6 +478,9 @@ function drawOverview(body, st, ctx) {
     body.querySelector('#summary').innerHTML = summaryBlock(sm, games);
     const allGames = gameStats(L.items, s.puuid);
     body.querySelector('#chartBox').innerHTML = chartPanel(s, allGames);
+    const ab = body.querySelector('#allyBox');
+    ab.innerHTML = allyPanel(allGames);
+    ab.hidden = !ab.innerHTML;
     body.querySelector('#iaBox').innerHTML = rankIa(s, allGames);
     body.querySelector('#rcCount').textContent = sm.n ? `${sm.n} parties` : '';
     body.querySelector('#recentChamps').innerHTML = sm.champList.length

@@ -280,7 +280,7 @@ function tableView(m, puuid, platform) {
       ];
       return `<div class="sb-head ${teamId === 100 ? 'blue' : 'red'}">
           <h4 class="${m.remake ? '' : win ? 't-win' : 't-loss'}">${m.remake ? 'Remake' : win ? 'Victoire' : 'Défaite'} <span>(côté ${teamId === 100 ? 'bleu' : 'rouge'})</span></h4>
-          <span class="sb-tot" title="Éliminations · or de l’équipe"><b>${tot.k}</b> kills · <b>${kNum(tot.gold)}</b> or</span>
+          <span class="sb-tot" title="Éliminations · or de l’équipe"><b>${tot.k}</b> kills · <b>${kNum(tot.gold)}</b> ${document.documentElement.lang === 'en' ? 'gold' : 'or'}</span>
           <div class="sb-objs">${objs.map(([k, l, v]) => `<span title="${l}">${objIc(k)}<b>${v}</b></span>`).join('')}</div>
           ${T.bans?.length ? `<div class="bans" title="Champions bannis">${T.bans.map((c) => champImg(c, 20)).join('')}</div>` : ''}
         </div>

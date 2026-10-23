@@ -385,11 +385,14 @@ async function dd(p, ttl = 21600) {
   return cache.set(key, await res.json(), ttl);
 }
 
-let staticMem = null;
+// Données du jeu en français (par défaut) ou en anglais pour la version anglaise du site.
+const STATIC_LANGS = ['fr_FR', 'en_US'];
+const langOf = (l) => (STATIC_LANGS.includes(l) ? l : LANG);
+const staticMemByLang = {};
 
-async function latestStaticFile() {
+async function latestStaticFile(lang = LANG) {
   try {
-    const files = (await fsp.readdir(DATA_DIR)).filter((f) => f.startsWith('static-') && f.endsWith(`-${LANG}.json`));
+    const files = (await fsp.readdir(DATA_DIR)).filter((f) => f.startsWith('static-') && f.endsWith(`-${lang}.json`));
     const stats = await Promise.all(files.map(async (f) => ({ f, t: (await fsp.stat(path.join(DATA_DIR, f))).mtimeMs })));
     stats.sort((a, b) => b.t - a.t);
     return stats.length ? JSON.parse(await fsp.readFile(path.join(DATA_DIR, stats[0].f), 'utf8')) : null;
@@ -398,39 +401,41 @@ async function latestStaticFile() {
   }
 }
 
-async function getStatic() {
+async function getStatic(lang = LANG) {
+  lang = langOf(lang);
+  const staticMem = staticMemByLang[lang];
   if (staticMem && Date.now() - staticMem.at < 3 * 3600e3) return staticMem.data;
   let version;
   try {
     version = (await dd('/api/versions.json', 3600))[0];
   } catch (e) {
-    const fallback = await latestStaticFile();
+    const fallback = await latestStaticFile(lang);
     if (fallback) {
-      staticMem = { at: Date.now(), data: fallback };
+      staticMemByLang[lang] = { at: Date.now(), data: fallback };
       return fallback;
     }
     throw e;
   }
-  const file = path.join(DATA_DIR, `static-${version}-${LANG}.json`);
+  const file = path.join(DATA_DIR, `static-${version}-${lang}.json`);
   try {
     const data = JSON.parse(await fsp.readFile(file, 'utf8'));
-    staticMem = { at: Date.now(), data };
+    staticMemByLang[lang] = { at: Date.now(), data };
     return data;
   } catch {
     /* pas encore en cache disque */
   }
-  const base = `/cdn/${version}/data/${LANG}`;
+  const base = `/cdn/${version}/data/${lang}`;
   const [champ, item, summ, runes] = await Promise.all(
     ['champion', 'item', 'summoner', 'runesReforged'].map((n) => dd(`${base}/${n}.json`))
   );
-  const data = buildStatic(version, champ, item, summ, runes);
+  const data = buildStatic(version, champ, item, summ, runes, lang);
   await fsp.mkdir(DATA_DIR, { recursive: true });
   await fsp.writeFile(file, JSON.stringify(data));
-  staticMem = { at: Date.now(), data };
+  staticMemByLang[lang] = { at: Date.now(), data };
   return data;
 }
 
-function buildStatic(version, champ, item, summ, runes) {
+function buildStatic(version, champ, item, summ, runes, lang = LANG) {
   const champions = {};
   for (const c of Object.values(champ.data)) {
     champions[c.key] = {
@@ -490,7 +495,7 @@ function buildStatic(version, champ, item, summ, runes) {
       }
     }
   }
-  return { version, lang: LANG, cdn: `${DDRAGON}/cdn`, champions, items, spells, runes: runeMap, trees };
+  return { version, lang, cdn: `${DDRAGON}/cdn`, champions, items, spells, runes: runeMap, trees };
 }
 
 /* ---------- Skins : rareté (Community Dragon) et prix ---------- */
@@ -627,12 +632,13 @@ async function getSkinPrices() {
   return data;
 }
 
-async function getChampion(id) {
+async function getChampion(id, lang = LANG) {
   if (!/^[A-Za-z0-9]+$/.test(id)) throw new ApiError(400, 'Champion invalide.');
-  const st = await getStatic();
+  lang = langOf(lang);
+  const st = await getStatic(lang);
   let d;
   try {
-    d = await dd(`/cdn/${st.version}/data/${LANG}/champion/${id}.json`);
+    d = await dd(`/cdn/${st.version}/data/${lang}/champion/${id}.json`);
   } catch {
     throw new ApiError(404, 'Champion introuvable.');
   }
@@ -731,6 +737,64 @@ async function recordLp(puuid, solo) {
   return list.slice(-60);
 }
 
+/* ---------- Peak et rangs par saison ---------- */
+// Riot ne donne ni le peak ni les rangs des saisons passées (league-v4 = rang actuel seulement).
+// cupcake.gg enregistre donc lui-même, pour chaque joueur croisé (profil, partie, classement),
+// le meilleur rang et le dernier rang connus de chaque saison, en Solo/Duo et en Flex.
+// Fichier : data/peaks.json. Une saison commence vers le 8 janvier (patch xx.1).
+const peaksFile = path.join(DATA_DIR, 'peaks.json');
+let peaksMem = null;
+let peaksTimer = null;
+function seasonOf(t) {
+  const d = new Date(t);
+  const y = d.getUTCFullYear();
+  const [, mm, dd] = SEASON_START.split('-').map(Number);
+  const start = Date.UTC(y, (mm || 1) - 1, dd || 8);
+  return String(t < start ? y - 1 : y);
+}
+async function recordPeaks(puuid, ranked) {
+  if (!puuid || !ranked) return null;
+  if (!peaksMem) peaksMem = await readJson(peaksFile, {});
+  const now = Date.now();
+  const season = seasonOf(now);
+  const P = peaksMem[puuid] || (peaksMem[puuid] = {});
+  const S = P[season] || (P[season] = {});
+  let changed = false;
+  for (const q of ['solo', 'flex']) {
+    const r = ranked[q];
+    if (!r?.tier) continue;
+    const v = lpValue(r);
+    if (v == null) continue;
+    const cur = { tier: r.tier, rank: r.rank, lp: r.lp, v, t: now, w: r.w, l: r.l };
+    const box = S[q] || (S[q] = {});
+    if (!box.peak || v > box.peak.v) {
+      box.peak = cur;
+      changed = true;
+    }
+    if (!box.last || box.last.v !== v || now - box.last.t > 6 * 3600e3) {
+      box.last = cur;
+      changed = true;
+    }
+  }
+  if (changed) {
+    clearTimeout(peaksTimer);
+    peaksTimer = setTimeout(() => writeJson(peaksFile, peaksMem).catch(() => {}), 5000);
+  }
+  return P;
+}
+// Saisons triées (plus récente d'abord) et meilleur rang Solo/Duo jamais enregistré.
+function seasonsView(P) {
+  const seasons = Object.entries(P || {})
+    .map(([season, x]) => ({ season, solo: x.solo || null, flex: x.flex || null }))
+    .sort((a, b) => b.season.localeCompare(a.season));
+  let peak = null;
+  for (const s of seasons) {
+    const p = s.solo?.peak;
+    if (p && (!peak || p.v > peak.v)) peak = { ...p, season: s.season, q: 'solo' };
+  }
+  return { seasons, peak, current: seasonOf(Date.now()) };
+}
+
 async function getSummoner(platform, name, tag, force) {
   name = name.trim();
   tag = tag.trim().replace(/^#/, '');
@@ -774,6 +838,7 @@ async function getSummoner(platform, name, tag, force) {
     level: sum.summonerLevel,
     fetchedAt: Date.now(),
     lpHistory: await recordLp(acc.puuid, compactLeague(league).solo).catch(() => []),
+    ...seasonsView(await recordPeaks(acc.puuid, compactLeague(league)).catch(() => null)),
     ranked: compactLeague(league),
     mastery: (mastery || []).map((m) => ({
       c: m.championId,
@@ -1102,6 +1167,7 @@ async function getRanks(platform, ids) {
     list.map(async (id) => {
       const l = await riot(platform, `/lol/league/v4/entries/by-puuid/${id}`, { ttl: 900 }).catch(() => null);
       const c = compactLeague(l);
+      recordPeaks(id, c).catch(() => null);
       const r = c.solo || c.flex;
       out[id] = r ? { tier: r.tier, rank: r.rank, lp: r.lp, q: c.solo ? 'solo' : 'flex' } : {};
     })
@@ -1133,6 +1199,7 @@ async function getLive(platform, puuid) {
       if (p.puuid) {
         const l = await riot(platform, `/lol/league/v4/entries/by-puuid/${p.puuid}`, { ttl: 600 }).catch(() => null);
         ranked = compactLeague(l);
+        recordPeaks(p.puuid, ranked).catch(() => null);
       }
       const [name, tag] = splitRiotId(p.riotId);
       if (p.puuid && name) rememberName(p.puuid, name, tag);
@@ -1293,9 +1360,11 @@ async function getRotation(platform) {
   return { free: r?.freeChampionIds || [], newbie: r?.freeChampionIdsForNewPlayers || [], newbieLevel: r?.maxNewPlayerLevel || 0 };
 }
 
-async function getStatus(platform) {
+async function getStatus(platform, lang = LANG) {
+  const want = langOf(lang);
   const s = await riot(platform, '/lol/status/v4/platform-data', { ttl: 300 });
   const tr = (arr) =>
+    (arr || []).find((x) => x.locale === want)?.content ||
     (arr || []).find((x) => x.locale === 'fr_FR')?.content ||
     (arr || []).find((x) => x.locale === 'en_US')?.content ||
     arr?.[0]?.content ||
@@ -1705,6 +1774,13 @@ function aggregate(meta, m, tl, st, ladder, mode = 'sr') {
     }
     const opp = i.participants.find((q) => q.teamPosition === role && q.teamId !== p.teamId);
     if (opp) bump(c.vs, opp.championId, w);
+    // Tous les adversaires (vsr) et tous les alliés (syn), par champion et rôle.
+    if (mode === 'sr') {
+      for (const q of i.participants) {
+        if (q === p || !q.teamPosition) continue;
+        bump(q.teamId === p.teamId ? (c.syn = c.syn || {}) : (c.vsr = c.vsr || {}), `${q.championId}|${q.teamPosition}`, w);
+      }
+    }
     const ld = lane[p.puuid];
     if (opp && ld) {
       // vd[adversaire] = [parties avec chronologie, somme écart d'or, somme écart de CS, somme écart d'XP] à 15 min
@@ -1786,6 +1862,35 @@ async function metaSummary(platform, mode = 'sr') {
 }
 
 // Détail complet d'un champion (tous ses rôles) pour un patch.
+// Échantillons enregistrés avant l'ajout de vsr/syn : alliés et adversaires reconstitués
+// à partir des parties récentes (même partie = même identifiant, même équipe = même résultat).
+const relMemo = new WeakMap();
+function derivedRelations(P) {
+  let R = relMemo.get(P);
+  if (R) return R;
+  R = new Map();
+  const byMatch = new Map();
+  for (const [k, c] of Object.entries(P.champs)) {
+    for (const g of c.recent || []) {
+      const arr = byMatch.get(g.m) || [];
+      if (!arr.some((x) => x.k === k)) arr.push({ k, w: g.w ? 1 : 0 });
+      byMatch.set(g.m, arr);
+    }
+  }
+  for (const arr of byMatch.values()) {
+    for (const a of arr) {
+      const e = R.get(a.k) || { vsr: {}, syn: {} };
+      for (const b of arr) {
+        if (a === b) continue;
+        bump(b.w === a.w ? e.syn : e.vsr, b.k, a.w);
+      }
+      R.set(a.k, e);
+    }
+  }
+  relMemo.set(P, R);
+  return R;
+}
+
 async function metaChampion(platform, key, patch, mode = 'sr') {
   const mk = metaKey(platform, mode);
   const m = await readMeta(mk);
@@ -1798,7 +1903,12 @@ async function metaChampion(platform, key, patch, mode = 'sr') {
     for (const [k, c] of Object.entries(P.champs)) {
       const [id, role] = k.split('|');
       // Copie : les étiquettes pro/streamer ne doivent pas finir dans le fichier d'échantillon.
-      if (Number(id) === key) roles[role] = { ...c, recent: (c.recent || []).map((g) => ({ ...g })) };
+      if (Number(id) !== key) continue;
+      roles[role] = { ...c, recent: (c.recent || []).map((g) => ({ ...g })) };
+      if (mode === 'sr' && !c.vsr) {
+        const d = derivedRelations(P).get(k);
+        if (d) Object.assign(roles[role], { vsr: d.vsr, syn: d.syn, relDerived: true });
+      }
     }
   }
   for (const c of Object.values(roles)) await tagKnown(c.recent, (g) => [g.pu, g.n, g.tg]);
@@ -2211,6 +2321,34 @@ async function getPatchNotes(label) {
   return { patch: label, url: found?.url || idx[label]?.url || guessUrls(label)[0], title: found?.title || `Patch ${label}`, image: found?.image || null, date: found?.date || null, sections: [], source: 'none' };
 }
 
+// Version anglaise : article officiel en-us ; à défaut, notes françaises (signalées par lang: 'fr').
+async function getPatchNotesEn(label) {
+  if (!/^\d{2}\.\d{1,2}$/.test(label)) throw new ApiError(400, 'Patch invalide.');
+  const file = path.join(DATA_DIR, `patchnotes-${label}-en.json`);
+  const st = await getStatic('en_US').catch(() => getStatic().catch(() => null));
+  const saved = await readJson(file, null);
+  if (saved?.source === 'riot') return { ...linkNotes(saved, st), lang: 'en' };
+  const key = `${label}-en`;
+  if (Date.now() - (notesTried.get(key) || 0) > 6 * 3600e3) {
+    notesTried.set(key, Date.now());
+    const idx = await notesIndex().catch(() => ({}));
+    const urls = [idx[label]?.url, ...guessUrls(label)].filter(Boolean).map((u) => u.replace(`/${RIOT_LOCALE}/`, '/en-us/'));
+    for (const u of [...new Set(urls)]) {
+      try {
+        const parsed = parseRiotNotes(await fetchText(u));
+        if (parsed.ok) {
+          const out = { patch: label, url: u, title: parsed.title || `Patch ${label}`, image: parsed.image, banner: parsed.banner, date: parsed.date, description: parsed.description, sections: parsed.sections, source: 'riot', fetched: Date.now() };
+          await writeJson(file, out).catch(() => {});
+          return { ...linkNotes(out, st), lang: 'en' };
+        }
+      } catch {
+        /* adresse suivante */
+      }
+    }
+  }
+  return { ...(await getPatchNotes(label)), lang: 'fr' };
+}
+
 async function getPatches() {
   let versions = await dd('/api/versions.json', 3600).catch(() => null);
   if (!versions) {
@@ -2580,6 +2718,51 @@ async function refreshProDirectory() {
   }
 }
 
+/* ---------- Photos des joueurs pros (données esport officielles de Riot) ---------- */
+// Une seule requête par jour : toutes les équipes et leurs joueurs (pseudo, photo, équipe).
+// Variables : PRO_PHOTOS_API, PRO_PHOTOS_KEY (clé publique du site esport de Riot), PRO_PHOTOS=0 pour couper.
+const PHOTO_API = process.env.PRO_PHOTOS_API || 'https://esports-api.lolesports.com/persisted/gw/getTeams?hl=en-US';
+const PHOTO_KEY = process.env.PRO_PHOTOS_KEY || '0TvQnueqKa5mxJntVWt0w4LpLfEkrV1Ta8rQBb9Z';
+let photoMem = null;
+async function proPhotoMap() {
+  if (process.env.PRO_PHOTOS === '0') return new Map();
+  if (photoMem && Date.now() - photoMem.at < 24 * 3600e3) return photoMem.map;
+  const file = path.join(DATA_DIR, 'pro-photos.json');
+  let saved = await readJson(file, null);
+  const map = new Map(Object.entries(saved?.map || {}));
+  if (!saved || Date.now() - (saved.at || 0) > 24 * 3600e3) {
+    try {
+      const r = await fetch(PHOTO_API, { headers: { 'x-api-key': PHOTO_KEY, 'User-Agent': PRO_UA }, signal: AbortSignal.timeout(15000) });
+      if (r.ok) {
+        const j = await r.json();
+        map.clear();
+        for (const t of j?.data?.teams || []) {
+          if (/^(tbd|tbd2)$/i.test(t.slug || '')) continue;
+          for (const pl of t.players || []) {
+            const k = String(pl.summonerName || '').trim().toLowerCase();
+            if (!k || !pl.image || /default|silhouette/i.test(pl.image)) continue;
+            map.set(k, { img: String(pl.image).replace(/^http:/, 'https:'), team: t.code || '', role: pl.role || '' });
+          }
+        }
+        await writeJson(file, { at: Date.now(), map: Object.fromEntries(map) }).catch(() => {});
+      }
+    } catch {
+      /* source injoignable : dernière liste connue */
+    }
+  }
+  photoMem = { at: Date.now(), map };
+  return map;
+}
+async function getProPhotos(names) {
+  const map = await proPhotoMap();
+  const out = {};
+  for (const n of String(names || '').split(',').map((x) => x.trim()).filter(Boolean).slice(0, 60)) {
+    const hit = map.get(n.toLowerCase());
+    if (hit) out[n.toLowerCase()] = hit;
+  }
+  return out;
+}
+
 /* ---------- Reconnaissance d'un pro à la demande ---------- */
 // Un badge pro n'est donné que sur une preuve solide : le compte (puuid, ou nom + tag exacts)
 // est relié à un joueur inscrit dans la source « comptes ». Pas de devinette sur le pseudo ni le rang.
@@ -2803,8 +2986,8 @@ const route = (method, re, fn) => routes.push({ method, re, fn });
 const P = '([a-z0-9]+)';
 
 route('GET', /^\/api\/config$/, () => ({ platforms: PLATFORMS, hasKey: !!KEY, demo: DEMO_ON, proWiki: PRO_WIKI_API.replace(/api\.php.*$/, ''), defaultPlatform: PLATFORMS[DEFAULT_PLATFORM] ? DEFAULT_PLATFORM : 'euw1' }));
-route('GET', /^\/api\/static$/, () => getStatic());
-route('GET', /^\/api\/champion\/([A-Za-z0-9]+)$/, (m) => getChampion(m[1]));
+route('GET', /^\/api\/static$/, (m, q) => getStatic(q.lang).catch((e) => (langOf(q.lang) !== LANG ? getStatic(LANG) : Promise.reject(e))));
+route('GET', /^\/api\/champion\/([A-Za-z0-9]+)$/, (m, q) => getChampion(m[1], q.lang).catch((e) => (langOf(q.lang) !== LANG && !(e instanceof ApiError && e.status === 400) ? getChampion(m[1]) : Promise.reject(e))));
 route('GET', new RegExp(`^/api/summoner/${P}/([^/]+)/([^/]+)$`), (m, q) => getSummoner(plat(m[1]), dec(m[2]), dec(m[3]), q.force === '1'));
 route('GET', new RegExp(`^/api/matches/${P}/([\\w-]+)$`), (m, q) => getMatches(plat(m[1]), puuidParam(m[2]), q));
 route('GET', new RegExp(`^/api/match/${P}/([A-Z0-9]+_\\d+)$`), async (m) => {
@@ -2819,9 +3002,10 @@ route('GET', new RegExp(`^/api/timeline/${P}/([A-Z0-9]+_\\d+)$`), (m) => getTime
 route('GET', new RegExp(`^/api/live-player/${P}/([\\w-]+)$`), (m, q) => getLivePlayer(plat(m[1]), puuidParam(m[2]), Number(q.champ) || 0, ROLES_OK.includes(q.role) ? q.role : ''));
 route('GET', new RegExp(`^/api/live/${P}/([\\w-]+)$`), (m) => getLive(plat(m[1]), puuidParam(m[2])));
 route('GET', new RegExp(`^/api/rotation/${P}$`), (m) => getRotation(plat(m[1])));
-route('GET', new RegExp(`^/api/status/${P}$`), (m) => getStatus(plat(m[1])));
+route('GET', new RegExp(`^/api/status/${P}$`), (m, q) => getStatus(plat(m[1]), q.lang));
 route('GET', new RegExp(`^/api/ladder/${P}$`), (m, q) => getLadder(m[1] === 'world' ? 'world' : plat(m[1]), q.queue, q.page));
 route('GET', new RegExp(`^/api/ranks/${P}$`), (m, q) => getRanks(plat(m[1]), q.ids));
+route('GET', /^\/api\/pro-photos$/, (m, q) => getProPhotos(q.names));
 route('GET', /^\/api\/pro-directory$/, async () => {
   const cur = await readJson(PRODIR_FILE, null);
   return { at: cur?.at || 0, players: cur?.players || 0, accounts: cur?.rows?.length || 0, running: proDirJob.running, error: proDirJob.error };
@@ -2836,7 +3020,7 @@ route('GET', /^\/api\/augments$/, () => getAugments());
 route('GET', new RegExp(`^/api/otp/${P}$`), (m, q) => getOtp(plat(m[1]), q));
 route('GET', new RegExp(`^/api/matchup/${P}$`), (m, q) => getMatchup(plat(m[1]), q));
 route('GET', /^\/api\/patches$/, () => getPatches());
-route('GET', /^\/api\/patch-notes\/(\d{2}\.\d{1,2})$/, (m) => getPatchNotes(m[1]));
+route('GET', /^\/api\/patch-notes\/(\d{2}\.\d{1,2})$/, (m, q) => (q.lang === 'en_US' ? getPatchNotesEn(m[1]) : getPatchNotes(m[1])));
 route('GET', /^\/api\/patch-diff\/(\d{2}\.\d{1,2})$/, (m) => getPatchDiff(m[1]));
 route('POST', new RegExp(`^/api/meta/${P}/start$`), (m, q) => {
   const p = plat(m[1]);
@@ -2879,7 +3063,7 @@ const MIME = {
 const IMG_SRC = ['https://ddragon.leagueoflegends.com', DDRAGON].filter((v, i, a) => a.indexOf(v) === i).join(' ');
 const CSP = [
   "default-src 'self'",
-  `img-src 'self' data: ${IMG_SRC} https://raw.communitydragon.org https://cmsassets.rgpub.io`,
+  `img-src 'self' data: ${IMG_SRC} https://raw.communitydragon.org https://cmsassets.rgpub.io https://static.lolesports.com https://am-a.akamaihd.net`,
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self'",
   "script-src 'self'",

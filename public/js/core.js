@@ -88,26 +88,29 @@ export function rich(s) {
     .replace(/\n/g, '<br>');
 }
 
-const nf = new Intl.NumberFormat('fr-FR');
+export const LANG = document.documentElement.lang === 'en' ? 'en' : 'fr';
+export const EN = LANG === 'en';
+const LOCALE = EN ? 'en-US' : 'fr-FR';
+const nf = new Intl.NumberFormat(LOCALE);
 export const num = (n) => nf.format(Math.round(n || 0));
-export const dec = (n, d = 1) => (Number.isFinite(n) ? n.toFixed(d).replace('.', ',') : '–');
+export const dec = (n, d = 1) => (Number.isFinite(n) ? (EN ? n.toFixed(d) : n.toFixed(d).replace('.', ',')) : '–');
 export const kNum = (n) => (n >= 1000 ? dec(n / 1000, 1) + ' k' : String(Math.round(n || 0)));
 export const pct = (a, b, d = 0) => (b ? dec((a / b) * 100, d) + ' %' : '–');
 export const kdaRatio = (k, d, a) => (d ? (k + a) / d : k + a ? Infinity : 0);
-export const kdaText = (r) => (r === Infinity ? 'Parfait' : dec(r, 2));
+export const kdaText = (r) => (r === Infinity ? (EN ? 'Perfect' : 'Parfait') : dec(r, 2));
 
-const rtf = new Intl.RelativeTimeFormat('fr', { numeric: 'auto' });
+const rtf = new Intl.RelativeTimeFormat(LANG, { numeric: 'auto' });
 export function ago(ts) {
   const s = (ts - Date.now()) / 1000;
   const a = Math.abs(s);
-  if (a < 60) return 'à l’instant';
+  if (a < 60) return EN ? 'just now' : 'à l’instant';
   if (a < 3600) return rtf.format(Math.round(s / 60), 'minute');
   if (a < 86400) return rtf.format(Math.round(s / 3600), 'hour');
   if (a < 30 * 86400) return rtf.format(Math.round(s / 86400), 'day');
   if (a < 365 * 86400) return rtf.format(Math.round(s / (30 * 86400)), 'month');
   return rtf.format(Math.round(s / (365 * 86400)), 'year');
 }
-const dtf = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'medium', timeStyle: 'short' });
+const dtf = new Intl.DateTimeFormat(LOCALE, { dateStyle: 'medium', timeStyle: 'short' });
 export const fullDate = (ts) => dtf.format(new Date(ts));
 export const clock = (sec) => {
   sec = Math.max(0, Math.floor(sec));
@@ -143,7 +146,14 @@ export const QUEUES = {
   1900: 'URF',
   2400: 'ARAM Mayhem',
 };
-export const queueName = (q) => QUEUES[q] || 'Mode spécial';
+// Noms officiels du client anglais.
+if (EN)
+  Object.assign(QUEUES, {
+    0: 'Custom', 400: 'Normal Draft', 420: 'Ranked Solo/Duo', 430: 'Normal Blind', 440: 'Ranked Flex', 480: 'Swiftplay', 490: 'Swiftplay',
+    830: 'Co-op vs. AI', 840: 'Co-op vs. AI', 850: 'Co-op vs. AI', 870: 'Co-op vs. AI', 880: 'Co-op vs. AI', 890: 'Co-op vs. AI',
+    1010: 'Snow ARURF', 1020: 'One for All', 1400: 'Ultimate Spellbook',
+  });
+export const queueName = (q) => QUEUES[q] || (EN ? 'Special mode' : 'Mode spécial');
 export const isArena = (q) => q === 1700 || q === 1710;
 
 export const TIERS = {
@@ -158,11 +168,12 @@ export const TIERS = {
   GRANDMASTER: 'Grand Maître',
   CHALLENGER: 'Challenger',
 };
+if (EN) Object.assign(TIERS, { IRON: 'Iron', SILVER: 'Silver', GOLD: 'Gold', PLATINUM: 'Platinum', EMERALD: 'Emerald', DIAMOND: 'Diamond', MASTER: 'Master', GRANDMASTER: 'Grandmaster' });
 const APEX = ['MASTER', 'GRANDMASTER', 'CHALLENGER'];
-const SHORT = { IRON: 'Fe', BRONZE: 'Br', SILVER: 'Ag', GOLD: 'Or', PLATINUM: 'Pt', EMERALD: 'Em', DIAMOND: 'Di', MASTER: 'M', GRANDMASTER: 'GM', CHALLENGER: 'C' };
+const SHORT = { IRON: EN ? 'I' : 'Fe', BRONZE: 'Br', SILVER: EN ? 'S' : 'Ag', GOLD: EN ? 'G' : 'Or', PLATINUM: 'Pt', EMERALD: 'Em', DIAMOND: 'Di', MASTER: 'M', GRANDMASTER: 'GM', CHALLENGER: 'C' };
 const DIV = { I: 1, II: 2, III: 3, IV: 4 };
 
-export const rankText = (r) => (!r ? 'Non classé' : APEX.includes(r.tier) ? TIERS[r.tier] : `${TIERS[r.tier] || r.tier} ${DIV[r.rank] || r.rank}`);
+export const rankText = (r) => (!r ? (EN ? 'Unranked' : 'Non classé') : APEX.includes(r.tier) ? TIERS[r.tier] : `${TIERS[r.tier] || r.tier} ${DIV[r.rank] || r.rank}`);
 
 // Écusson dessiné en CSS : affiché pour « non classé » ou si l'emblème officiel ne charge pas.
 export function fallbackCrest(tier, div, size = 'md') {
@@ -179,7 +190,7 @@ export function crest(r, size = 'md') {
   return `<span class="emb emb-${size}" data-tier="${tier}" data-div="${div}" aria-hidden="true"><img class="rank-img" src="/ranks/${tier.toLowerCase()}.png" alt="" decoding="async">${roman ? `<b class="emb-div">${roman}</b>` : ''}</span>`;
 }
 
-export const ROLES = { TOP: 'Haut', JUNGLE: 'Jungle', MIDDLE: 'Milieu', BOTTOM: 'Tireur', UTILITY: 'Support' };
+export const ROLES = EN ? { TOP: 'Top', JUNGLE: 'Jungle', MIDDLE: 'Mid', BOTTOM: 'Bot', UTILITY: 'Support' } : { TOP: 'Haut', JUNGLE: 'Jungle', MIDDLE: 'Milieu', BOTTOM: 'Tireur', UTILITY: 'Support' };
 export const ROLE_ORDER = ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY'];
 
 // Icônes de position (deux tons : .ri-a = partie mise en avant, .ri-b = cadre).
@@ -268,7 +279,7 @@ export const norm = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u0
 export const DEMO_NOTE =
   'Version de démonstration : seules 150 parties classées (Faille de l’invocateur, EUW) sont répertoriées, et les builds ARAM, ARAM du chaos et Arena ne sont pas encore disponibles. Analyser plus de parties demande un serveur payant ; je le mettrai en place dès que Riot aura validé le projet.';
 
-export const CLASSES = { Fighter: 'Combattant', Tank: 'Tank', Mage: 'Mage', Assassin: 'Assassin', Marksman: 'Tireur', Support: 'Support' };
+export const CLASSES = EN ? { Fighter: 'Fighter', Tank: 'Tank', Mage: 'Mage', Assassin: 'Assassin', Marksman: 'Marksman', Support: 'Support' } : { Fighter: 'Combattant', Tank: 'Tank', Mage: 'Mage', Assassin: 'Assassin', Marksman: 'Tireur', Support: 'Support' };
 
 /* ---------- Images Data Dragon ---------- */
 
@@ -421,7 +432,7 @@ export function scoreMatch(m) {
 }
 
 // Niveau d'un joueur sur 100 (score cupcake) : un palier tous les 10 %.
-const LEVELS = ['Déchu', 'Démon', 'Diable', 'Diablotin', 'Cornu', 'Humain', 'Valeureux', 'Béni', 'Séraphin', 'Archange', 'GOAT'];
+const LEVELS = EN ? ['Fallen', 'Demon', 'Devil', 'Imp', 'Horned', 'Human', 'Valiant', 'Blessed', 'Seraph', 'Archangel', 'GOAT'] : ['Déchu', 'Démon', 'Diable', 'Diablotin', 'Cornu', 'Humain', 'Valeureux', 'Béni', 'Séraphin', 'Archange', 'GOAT'];
 export function levelOf(v) {
   const x = Math.max(0, Math.min(100, Math.round(v)));
   return { v: x, step: levelStep(x), label: LEVELS[levelStep(x)] };

@@ -276,7 +276,7 @@ async function loadPatch(el, ctx) {
   el.querySelector('#patchMore').href = `#/patch/${cur.patch}`;
   let notes = null;
   try {
-    notes = await api(`/patch-notes/${cur.patch}`);
+    notes = await api(`/patch-notes/${cur.patch}${document.documentElement.lang === 'en' ? '?lang=en_US' : ''}`);
   } catch {
     /* notes indisponibles */
   }
@@ -291,9 +291,11 @@ async function loadPatch(el, ctx) {
     const c = champByKey(e.champ || '') || (e.key && champOf(e.key));
     return c ? `<a class="k-${e.kind}" href="#/patch/${cur.patch}?c=${esc(c.id)}" title="${esc(c.name)}">${champImg(c.key, 30)}</a>` : '';
   };
+  // Version anglaise : les points clés en français ne sont pas affichés.
+  if (notes && document.documentElement.lang === 'en' && notes.lang === 'fr') notes.highlights = [];
   const date = notes?.date || cur.date;
   box.innerHTML = `
-    <div class="hp-banner">${notes?.image || cur.image ? `<img src="${esc(notes?.image || cur.image)}" alt="" loading="lazy">` : ''}<b>Patch ${esc(cur.patch)}</b>${date ? `<small>${esc(new Date(date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' }))}</small>` : ''}</div>
+    <div class="hp-banner">${notes?.image || cur.image ? `<img src="${esc(notes?.image || cur.image)}" alt="" loading="lazy">` : ''}<b>Patch ${esc(cur.patch)}</b>${date ? `<small>${esc(new Date(date).toLocaleDateString(LOC, { day: 'numeric', month: 'long' }))}</small>` : ''}</div>
     ${ents.length ? `<div class="hp-kinds">${kinds
       .map(([k, l]) => {
         const list2 = ents.filter((e) => e.kind === k);
@@ -338,14 +340,14 @@ async function loadRegionPanels(el, ctx) {
   api(`/rotation/${p}`)
     .then((r) => {
       if (!ctx.alive() || S.platform !== p) return;
-      const champs = r.free.map((id) => champOf(id)).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+      const champs = r.free.map((id) => champOf(id)).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name, LOC));
       rot.innerHTML = champs.length
         ? `<div class="rotation">${champs.map((c) => `<a href="${champHref(c)}" title="${esc(c.name)}">${champImg(c.key, 44)}<span>${esc(c.name)}</span></a>`).join('')}</div>`
         : '<p class="empty-hint">Aucune rotation publiée pour cette région.</p>';
     })
     .catch(fail(rot));
 
-  api(`/status/${p}`)
+  api(`/status/${p}${document.documentElement.lang === "en" ? "?lang=en_US" : ""}`)
     .then((s) => {
       if (!ctx.alive() || S.platform !== p) return;
       const first = s.issues[0];

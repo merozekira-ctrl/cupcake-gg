@@ -1,8 +1,9 @@
 // Tier list, liste des champions, fiche champion (builds haut niveau du patch, joueurs, compétences, skins).
+import { drawOtpList } from './otp.js';
 import {
   S, api, esc, DEMO_NOTE, num, dec, pct, kdaText, kdaRatio, ago, champImg, champOf, champByKey, champHref, itemImg, spellImg,
   runeImg, abilityImg, passiveImg, splashUrl, loadingUrl, roleIcon, ROLES, ROLE_ORDER, CLASSES, rich, crest, rankText,
-  regionOptions, profileImg, setPlatform, setTitle, loading, errorState, store, toast, playerHref, norm, wrBadge, proBadge, roleBar, patchLabel,
+  regionOptions, regionBadge, clock, profileImg, setPlatform, setTitle, loading, errorState, store, toast, playerHref, norm, wrBadge, proBadge, roleBar, patchLabel,
 } from '../core.js';
 
 const cmpPatch = (a, b) => {
@@ -89,7 +90,7 @@ export async function renderList(el, _p, ctx) {
 }
 
 function drawAll(body) {
-  const all = Object.values(S.st.champions).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  const all = Object.values(S.st.champions).sort((a, b) => a.name.localeCompare(b.name, LOC));
   let cls = '';
   let q = '';
   body.innerHTML = `
@@ -577,6 +578,202 @@ function muRow(x) {
 }
 
 const PB_IC = new Map();
+const PB_RK = new Map();
+
+// LP en couleur du palier (épuré : blason + valeur).
+const TIER_COLOR = {
+  IRON: '#9a9a9a', BRONZE: '#c08a63', SILVER: '#b4c2d0', GOLD: '#e5b95a', PLATINUM: '#4fd1c5', EMERALD: '#34d399',
+  DIAMOND: '#7fa7ff', MASTER: '#c77dff', GRANDMASTER: '#ff5d73', CHALLENGER: '#5fe3f2',
+};
+const APEX_T = ['MASTER', 'GRANDMASTER', 'CHALLENGER'];
+function lpTag(tier, lp, rank) {
+  if (!tier) return '<span class="lp-t muted">–</span>';
+  const label = APEX_T.includes(tier) ? `${num(lp ?? 0)} LP` : `${esc(rankText({ tier, rank }))}${lp != null ? ` · ${num(lp)} LP` : ''}`;
+  return `<span class="lp-t" style="--tc:${TIER_COLOR[tier] || 'var(--text)'}" title="${esc(rankText({ tier, rank }))}${lp != null ? ' · ' + num(lp) + ' LP' : ''}">${crest({ tier, rank }, 'xs')}<b>${label}</b></span>`;
+}
+// Rangs manquants (joueurs hors classement Maître+) : chargés par lots de 10.
+async function fillPbRanks(body) {
+  const els = [...body.querySelectorAll('[data-pbrk]')];
+  const set = (id, r) =>
+    body.querySelectorAll(`[data-pbrk="${CSS.escape(id)}"]`).forEach((e) => (e.outerHTML = r && r.tier ? lpTag(r.tier, r.lp, r.rank) : '<span class="lp-t muted">Non classé</span>'));
+  const todo = [];
+  for (const id of new Set(els.map((e) => e.dataset.pbrk).filter(Boolean))) {
+    if (PB_RK.has(id)) set(id, PB_RK.get(id));
+    else todo.push(id);
+  }
+  for (let i = 0; i < todo.length && i < 40; i += 10) {
+    const ids = todo.slice(i, i + 10);
+    const res = await api(`/ranks/${S.platform}?ids=${ids.join(',')}`).catch(() => ({}));
+    for (const id of ids) {
+      PB_RK.set(id, res[id] || null);
+      set(id, res[id]);
+    }
+  }
+  body.querySelectorAll('[data-pbrk=""]').forEach((e) => (e.outerHTML = '<span class="lp-t muted">–</span>'));
+}
+
+
+/* ---------- Matchups et synergies (cartes) + mini classement OTP ---------- */
+const REL_MIN = 2;
+function relCards(c, R, role, kind, roleF, q) {
+  const src = kind === 'syn' ? R.syn || {} : R.vsr || {};
+  const base = R.g ? R.w / R.g : 0.5;
+  const list = Object.entries(src)
+    .map(([k, [n, w]]) => {
+      const [id, r] = k.split('|');
+      return { id: Number(id), r, n, w, d: w / n - base };
+    })
+    .filter((x) => x.n >= REL_MIN && (roleF === 'ALL' || x.r === roleF))
+    .filter((x) => !q || norm(champOf(x.id)?.name || '').includes(q));
+  const card = (x) => {
+    const ch = champOf(x.id);
+    if (!ch) return '';
+    let lane = '';
+    if (kind === 'vs' && x.r === role && R.vd?.[x.id]?.[0]) {
+      const gd = R.vd[x.id][1] / R.vd[x.id][0];
+      lane = gd > 250 ? '<em class="ln good">Bonne lane</em>' : gd < -250 ? '<em class="ln bad">Lane difficile</em>' : '<em class="ln">Lane égale</em>';
+    }
+    const href = kind === 'vs' && x.r === role ? `#/matchups?champ=${c.id}&vs=${ch.id}&role=${role}` : champHref(ch, x.r);
+    const dp = (x.d * 100).toFixed(1);
+    return `<a class="rel-card" href="${href}" title="${esc(ch.name)} · ${ROLES[x.r] || ''} · ${x.w}/${x.n}">
+      <span class="rel-img"><img src="${esc(loadingUrl(ch.id))}" alt="" loading="lazy"><span class="rel-role">${roleIcon(x.r, false)}</span></span>
+      <b class="${x.d >= 0 ? 'up' : 'down'}">${x.d >= 0 ? '+' : ''}${dp.replace('.', document.documentElement.lang === 'en' ? '.' : ',')}%</b>
+      <small>${x.n} parties</small>${lane}</a>`;
+  };
+  const good = list.filter((x) => x.d > 0).sort((a, b) => b.d - a.d || b.n - a.n);
+  const bad = list.filter((x) => x.d < 0).sort((a, b) => a.d - b.d || b.n - a.n);
+  const row = (title, arr) => `<div class="rel-row"><h3>${title}</h3>${arr.length ? `<div class="rel-scroll">${arr.map(card).join('')}</div>` : '<p class="muted small">Pas encore assez de parties.</p>'}</div>`;
+  return kind === 'syn'
+    ? row('Bonnes synergies', good) + row('Mauvaises synergies', bad)
+    : row('Bon contre', good) + row('Mauvais contre', bad);
+}
+function relPanel(c, R, role) {
+  return `<section class="panel rel-panel" id="relPanel">
+    <div class="rel-head">
+      <h2>${roleIcon(role, false)} Matchups pour ${esc(c.name)}</h2>
+      <div class="seg rel-kind" role="tablist"><button type="button" data-rk="vs" aria-selected="true">Matchups</button><button type="button" data-rk="syn" aria-selected="false">Synergies</button></div>
+      <div class="rel-tools">
+        <div class="rolebar rel-roles" role="group" aria-label="Rôle">${['ALL', ...ROLE_ORDER].map((r) => `<button type="button" data-rr="${r}" aria-pressed="${r === role}" title="${r === 'ALL' ? 'Tous les rôles' : ROLES[r]}">${roleIcon(r, false)}</button>`).join('')}</div>
+        <input class="rel-q" type="search" placeholder="Rechercher un champion" aria-label="Rechercher un champion">
+      </div>
+    </div>
+    <div id="relBody"></div>
+    ${R.relDerived ? '<p class="muted small rel-note">Synergies et adversaires des autres rôles reconstitués à partir des parties récentes de l’échantillon.</p>' : ''}
+  </section>`;
+}
+function wireRel(box, c, R, role) {
+  const st = { kind: 'vs', role, q: '' };
+  const draw = () => {
+    box.querySelector('#relBody').innerHTML = relCards(c, R, role, st.kind, st.role, st.q);
+    box.querySelector('.rel-head h2').innerHTML = `${roleIcon(role, false)} ${st.kind === 'syn' ? 'Synergies' : 'Matchups'} pour ${esc(c.name)}`;
+  };
+  box.querySelectorAll('[data-rk]').forEach((b) =>
+    b.addEventListener('click', () => {
+      st.kind = b.dataset.rk;
+      // Synergies : tous les rôles par défaut ; matchups : adversaire de la même voie.
+      st.role = st.kind === 'syn' ? 'ALL' : role;
+      box.querySelectorAll('[data-rk]').forEach((x) => x.setAttribute('aria-selected', String(x === b)));
+      box.querySelectorAll('[data-rr]').forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.rr === st.role)));
+      draw();
+    })
+  );
+  box.querySelectorAll('[data-rr]').forEach((b) =>
+    b.addEventListener('click', () => {
+      st.role = b.dataset.rr;
+      box.querySelectorAll('[data-rr]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+      draw();
+    })
+  );
+  box.querySelector('.rel-q').addEventListener('input', (e) => {
+    st.q = norm(e.target.value.trim());
+    draw();
+  });
+  draw();
+}
+async function otpMini(box, c, p, href) {
+  box.innerHTML = `<div class="panel-title"><h2>Classement OTP ${esc(c.name)}</h2></div>${loading()}`;
+  const data = await api(`/otp/${p}?champ=${c.key}`).catch(() => null);
+  const rows = (data?.rows || []).slice(0, 5);
+  box.innerHTML = `<div class="panel-title"><h2>OTP ${esc(c.name)}</h2></div>
+    ${rows.length
+      ? `<div class="otp-mini"><div class="om-h"><span></span><span>Joueur</span><span>WR</span><span>Parties</span></div>${rows
+          .map((r, i) => `<a class="om-r" href="${playerHref(r.p, r.name, r.tag)}"><span class="om-n">${i + 1}</span><span class="om-p">${r.tier ? crest({ tier: r.tier }, 'xs') : ''}<b>${esc(r.name)}</b></span><span>${pct(r.cw, r.g)}</span><span>${r.n}</span></a>`)
+          .join('')}</div>`
+      : '<p class="muted small" style="padding:0 16px">Aucun OTP pour l’instant.</p>'}
+    <a class="btn btn-block om-all" href="${href}">Classement complet</a>`;
+}
+
+/* ---------- Builds pros ---------- */
+const SILHOUETTE = '<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="17" r="9" fill="currentColor"/><path d="M6 46c1.5-10 9-15 18-15s16.5 5 18 15Z" fill="currentColor"/></svg>';
+const PHOTO = new Map();
+function proBuildsTab(R, cm, filter) {
+  const pros = Object.fromEntries((cm.pros || []).map((x) => [x.puuid, x]));
+  const list = (R.recent || [])
+    .map((g) => ({ g, pro: pros[g.pu] ? { kind: pros[g.pu].kind || 'pro', label: pros[g.pu].label, team: pros[g.pu].team } : g.pro }))
+    .filter((x) => x.pro && (filter === 'all' || x.pro.kind === 'pro'));
+  const rows = list
+    .map(({ g, pro }) => {
+      const items = g.ord?.length ? [...g.ord] : g.it.slice(0, 6).filter(Boolean);
+      const name = pro.label || g.n;
+      const photo = PHOTO.get(String(name).toLowerCase());
+      return `<div class="prb ${g.w ? 'win' : 'loss'}">
+        <div class="prb-when"><span><b>${clock(g.dur || 0)}</b><small>${esc(ago(g.t))}</small></span><span>${regionBadge(S.platform)}<b>${esc(patchLabel(cm.patch))}</b></span></div>
+        <div class="prb-who"><span class="prb-ph${photo ? ' has' : ''}" data-photo="${esc(name)}">${photo ? `<img src="${esc(photo.img)}" alt="" loading="lazy">` : SILHOUETTE}</span>
+          <span class="prb-nm">${g.tg ? `<a href="${playerHref(S.platform, g.n, g.tg)}">${esc(name)}</a>` : `<b>${esc(name)}</b>`}<small>${pro.kind === 'pro' ? (pro.team || photo?.team ? `<i>/</i> ${esc(pro.team || photo.team)}` : 'Pro') : proBadge(pro)}</small></span></div>
+        <div class="prb-build">
+          <div class="prb-sr">${spellImg(g.s1, 22)}${runeImg(g.ks, 22)}${spellImg(g.s2, 22)}${runeImg(g.ss, 18, true)}</div>
+          <div class="prb-items">${items.slice(0, 6).map((id) => itemImg(id, 28)).join('')}</div>
+        </div>
+        <div class="prb-vs">${g.vs ? `${champImg(g.vs, 40)}<small>VS</small>` : ''}</div>
+        <div class="prb-kda"><b>${g.k} <i>/</i> <span class="bad">${g.d}</span> <i>/</i> ${g.a}</b><small>${kdaText(kdaRatio(g.k, g.d, g.a))} KDA · ${g.cs} CS</small></div>
+        <div class="prb-res"><b class="${g.w ? 'good' : 'bad'}">${g.w ? 'Victoire' : 'Défaite'}</b></div>
+      </div>`;
+    })
+    .join('');
+  return `<div class="toolbar">
+      <div class="chips" role="group" aria-label="Filtrer les parties">
+        <button class="chip" type="button" data-prf="pro" aria-pressed="${filter !== 'all'}">Pros</button>
+        <button class="chip" type="button" data-prf="all" aria-pressed="${filter === 'all'}">Pros et streamers</button>
+      </div>
+      <p class="muted small grow">Parties des pros reconnus dans l’échantillon, objets dans l’ordre d’achat.</p>
+    </div>
+    ${rows ? `<div class="prb-list">${rows}</div>` : `<div class="panel state"><p class="state-title">Aucune partie de pro pour l’instant</p><p>${S.cfg.demo ? 'La démonstration ne contient que 150 parties : les pros y sont rares.' : 'L’échantillon grossit à chaque analyse : les parties des pros reconnus apparaîtront ici.'}</p></div>`}`;
+}
+async function fillProPhotos(body) {
+  const names = [...new Set([...body.querySelectorAll('.prb-ph:not(.has)')].map((e) => e.dataset.photo).filter((n) => n && !PHOTO.has(n.toLowerCase())))];
+  if (!names.length) return;
+  names.forEach((n) => PHOTO.set(n.toLowerCase(), null));
+  const res = await api(`/pro-photos?names=${encodeURIComponent(names.join(','))}`).catch(() => ({}));
+  for (const n of names) {
+    const hit = res[n.toLowerCase()];
+    if (!hit) continue;
+    PHOTO.set(n.toLowerCase(), hit);
+    body.querySelectorAll(`.prb-ph[data-photo="${CSS.escape(n)}"]`).forEach((e) => {
+      e.classList.add('has');
+      e.innerHTML = `<img src="${esc(hit.img)}" alt="" loading="lazy">`;
+    });
+  }
+}
+
+/* ---------- Matchups (onglet) ---------- */
+function matchupsTab(c, R, role) {
+  const vs = Object.entries(R.vs || {})
+    .map(([id, [n, w]]) => ({ id, n, w }))
+    .filter((x) => x.n >= 1)
+    .sort((a, b) => b.n - a.n || b.w / b.n - a.w / a.n);
+  const best = vs.filter((x) => x.n >= 2 && x.w / x.n > 0.5).sort((a, b) => b.w / b.n - a.w / a.n || b.n - a.n).slice(0, 5);
+  const worst = vs.filter((x) => x.n >= 2 && x.w / x.n < 0.5).sort((a, b) => a.w / a.n - b.w / b.n || b.n - a.n).slice(0, 5);
+  MU_CTX = { champ: c.id, role };
+  if (!vs.length) return `<div class="panel state"><p class="state-title">Aucun duel dans l’échantillon</p><p>Pas encore assez de face-à-face dans l’échantillon.</p></div>`;
+  return `<div class="mu-tab">
+    <div class="c-cols mu-top">
+      <section class="panel"><div class="panel-title"><h2 class="good">Favorables</h2></div><div class="mu-list">${best.map(muRow).join('') || '<p class="muted small">Aucun pour l’instant.</p>'}</div></section>
+      <section class="panel"><div class="panel-title"><h2 class="bad">Difficiles</h2></div><div class="mu-list">${worst.map(muRow).join('') || '<p class="muted small">Aucun pour l’instant.</p>'}</div></section>
+    </div>
+    <section class="panel"><div class="panel-title"><h2>Tous les matchups de ${esc(c.name)}</h2><a class="btn btn-sm" href="#/matchups?champ=${esc(c.id)}${role && role !== 'ALL' ? '&role=' + role : ''}">Ouvrir l’arène</a></div>
+      <div class="mu-all">${vs.map(muRow).join('')}</div></section>
+  </div>`;
+}
 
 // Icônes d’invocateur absentes des anciennes parties : chargées après coup.
 function fillPbIcons(body) {
@@ -608,13 +805,14 @@ function playersTab(R, cm, filter, limit = 15) {
       const pro = pros[g.pu];
       const items = g.ord?.length ? [...g.ord] : g.it.slice(0, 6).filter(Boolean);
       const ic = g.ic ?? PB_IC.get(g.pu);
-      const av = `<span class="pb-av">${ic != null ? profileImg(ic, 40, true) : `<span class="pb-av-ph" data-pbic="${esc(g.pu || '')}">${esc((g.n || '?').slice(0, 1).toUpperCase())}</span>`}${g.tier ? `<span class="pb-crest">${crest({ tier: g.tier }, 'sm')}</span>` : ''}</span>`;
-      const rank = g.tier ? `${esc(rankText({ tier: g.tier }))}${g.lp != null ? ` · ${num(g.lp)} LP` : ''}` : '';
+      const av = `<span class="pb-av">${ic != null ? profileImg(ic, 40, true) : `<span class="pb-av-ph" data-pbic="${esc(g.pu || '')}">${esc((g.n || '?').slice(0, 1).toUpperCase())}</span>`}</span>`;
       const who = pro
         ? `${av}<span class="pl-name"><a href="${playerHref(pro.platform, ...pro.riotId.split('#'))}">${esc(pro.label)}</a><small><span class="pro-badge">${esc(pro.team || 'Pro')}</span> ${esc(pro.riotId)}</small></span>`
-        : `${av}<span class="pl-name">${g.tg ? `<a href="${playerHref(S.platform, g.n, g.tg)}">${esc(g.n)}</a>` : `<span>${esc(g.n || 'Joueur')}</span>`}<small>${g.pro ? proBadge(g.pro) : ''}${rank ? `<span>${rank}</span>` : g.tg ? `<span>#${esc(g.tg)}</span>` : ''}</small></span>`;
+        : `${av}<span class="pl-name">${g.tg ? `<a href="${playerHref(S.platform, g.n, g.tg)}">${esc(g.n)}</a>` : `<span>${esc(g.n || 'Joueur')}</span>`}<small>${g.pro ? proBadge(g.pro) : g.tg ? `<span>#${esc(g.tg)}</span>` : ''}</small></span>`;
+      const rk = g.tier ? lpTag(g.tier, g.lp, g.rank) : `<span class="lp-t lp-wait" data-pbrk="${esc(g.pu || '')}"><span class="sb-sk"></span></span>`;
       return `<div class="pb ${g.w ? 'win' : 'loss'}">
         <div class="pb-who">${who}</div>
+        <div class="pb-lp">${rk}</div>
         <div class="pb-vs">${g.vs ? `<span class="muted small">contre</span>${champImg(g.vs, 28)}` : ''}</div>
         <div class="pb-kda"><b>${g.k}/<span class="bad">${g.d}</span>/${g.a}</b><small>${kdaText(kdaRatio(g.k, g.d, g.a))} KDA, ${g.cs} CS</small></div>
         <div class="pb-items">${g.bt ? `${itemImg(g.bt, 28)}<span class="mini-sep" aria-hidden="true"></span>` : ''}${items.map((id) => itemImg(id, 28)).join('')}</div>
@@ -718,7 +916,10 @@ const SKIN_RARITY = {
 
 const TABS = [
   ['build', 'Build'],
+  ['pros', 'Builds pros'],
   ['joueurs', 'Meilleurs joueurs'],
+  ['matchups', 'Matchups'],
+  ['otp', 'OTP'],
   ['competences', 'Compétences'],
   ['skins', 'Skins'],
   ['histoire', 'Histoire'],
@@ -739,7 +940,7 @@ export async function renderChampion(el, { id }, ctx) {
   let summary = null;
   try {
     [full, cm, summary] = await Promise.all([
-      api(`/champion/${c.id}`),
+      api(`/champion/${c.id}${document.documentElement.lang === "en" ? "?lang=en_US" : ""}`),
       S.cfg.hasKey ? api(`/meta/${p}/champion/${c.key}?mode=${mode}${ctx.query.patch ? '&patch=' + encodeURIComponent(ctx.query.patch) : ''}`).catch(() => null) : null,
       S.cfg.hasKey ? getMeta(p).catch(() => null) : null,
       mode === 'arena' || mode === 'chaos' ? loadAugments() : null,
@@ -817,8 +1018,14 @@ export async function renderChampion(el, { id }, ctx) {
       }
     });
   if (tab === 'build') {
-    body.innerHTML = R ? buildTab(c, R, cm, role, mode) : noData();
+    body.innerHTML = R
+      ? `${mode === 'sr' && role && role !== 'ALL' ? `<div class="rel-wrap">${relPanel(c, R, role)}<aside class="panel otp-mini-box" id="otpMini"></aside></div>` : ''}${buildTab(c, R, cm, role, mode)}`
+      : noData();
     wireStart();
+    const rp = body.querySelector('#relPanel');
+    if (rp) wireRel(rp, c, R, role);
+    const om = body.querySelector('#otpMini');
+    if (om) otpMini(om, c, p, href({ tab: 'otp' }));
     body.querySelectorAll('[data-rp]').forEach((b) =>
       b.addEventListener('click', () => {
         body.querySelectorAll('[data-rp]').forEach((x) => x.setAttribute('aria-selected', String(x === b)));
@@ -836,8 +1043,40 @@ export async function renderChampion(el, { id }, ctx) {
         body.querySelectorAll('[data-pf]').forEach((b) => b.addEventListener('click', () => paint(b.dataset.pf)));
         body.querySelector('#pbMore')?.addEventListener('click', () => paint(f, limit + 15));
         fillPbIcons(body);
+        fillPbRanks(body);
       };
       paint('all');
+    }
+  } else if (tab === 'pros') {
+    if (!R) {
+      body.innerHTML = noData();
+      wireStart();
+    } else {
+      const paintP = (f) => {
+        body.innerHTML = proBuildsTab(R, cm, f);
+        body.querySelectorAll('[data-prf]').forEach((b) => b.addEventListener('click', () => paintP(b.dataset.prf)));
+        fillProPhotos(body);
+      };
+      paintP('pro');
+    }
+  } else if (tab === 'matchups') {
+    body.innerHTML = R ? matchupsTab(c, R, role) : noData();
+    if (!R) wireStart();
+  } else if (tab === 'otp') {
+    if (!S.cfg.hasKey) body.innerHTML = '<div class="panel state"><p>Le classement OTP a besoin d’une clé API Riot.</p></div>';
+    else {
+      body.innerHTML = loading('Recherche des spécialistes…');
+      api(`/otp/${p}?champ=${c.key}`)
+        .then((data) => {
+          if (!ctx.alive()) return;
+          if (!data.rows.length) {
+            body.innerHTML = `<div class="panel state"><p class="state-title">Aucun OTP de ${esc(c.name)} pour l’instant</p><p>${S.cfg.demo ? 'La démonstration ne contient que 150 parties : seuls les joueurs les plus réguliers apparaissent.' : 'L’échantillon de parties grossit à chaque analyse automatique : reviens un peu plus tard.'}</p><a class="btn" href="#/otp">Voir tous les OTP</a></div>`;
+            return;
+          }
+          body.innerHTML = '<div id="cOtp"></div>';
+          drawOtpList(body.querySelector('#cOtp'), data.rows, ctx);
+        })
+        .catch((e) => ctx.alive() && (body.innerHTML = errorState(e)));
     }
   } else if (tab === 'competences') body.innerHTML = abilitiesHtml(full);
   else if (tab === 'skins') {

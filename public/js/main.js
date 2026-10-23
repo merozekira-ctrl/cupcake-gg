@@ -1,6 +1,7 @@
 // Point d'entrée : thème, recherche rapide, routeur.
 import { S, api, store, errorState, loading, setPlatform, regionOptions, fallbackCrest } from './core.js';
 import { bindOmni } from './omni.js';
+import { startTranslation } from './i18n.js';
 import * as Home from './views/home.js';
 import * as Profile from './views/profile.js';
 import * as Champions from './views/champions.js';
@@ -24,6 +25,21 @@ function applyTheme(t) {
   btn.setAttribute('aria-label', label);
   btn.title = label;
 }
+// Langue : bouton FR / EN (le choix est gardé, la page se recharge dans la langue choisie).
+{
+  const en = document.documentElement.lang === 'en';
+  const lb = document.getElementById('langBtn');
+  lb.querySelector('span').textContent = en ? 'FR' : 'EN';
+  lb.setAttribute('aria-label', en ? 'Passer en français' : 'Switch to English');
+  lb.addEventListener('click', () => {
+    try {
+      localStorage.setItem('rs-lang', en ? 'fr' : 'en');
+    } catch {}
+    location.reload();
+  });
+  if (en) startTranslation();
+}
+
 document.getElementById('themeBtn').addEventListener('click', () => {
   const t = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
   applyTheme(t);
@@ -228,7 +244,7 @@ async function boot() {
   applyTheme(document.documentElement.getAttribute('data-theme') || 'dark');
   view.innerHTML = loading('Chargement des données du jeu…');
   try {
-    const [cfg, st] = await Promise.all([api('/config'), api('/static')]);
+    const [cfg, st] = await Promise.all([api('/config'), api(document.documentElement.lang === 'en' ? '/static?lang=en_US' : '/static')]);
     S.cfg = cfg;
     S.st = st;
   } catch (e) {

@@ -16,6 +16,7 @@ const TABS = [
   ['apercu', 'Aperçu'],
   ['champions', 'Champions'],
   ['maitrise', 'Maîtrise'],
+  ['saisons', 'Saisons'],
   ['direct', 'Partie en direct'],
 ];
 const FILTERS = [
@@ -96,6 +97,7 @@ function draw(el, st, tab, ctx) {
           <span class="season-pill" id="seasonPill"><span class="spinner"></span>Saison 2026…</span>
           <span id="livePill"></span>
         </div>
+        ${peakPill(s)}
       </div>
       <div class="p-actions">
         <button class="btn" id="favBtn" type="button" aria-pressed="${fav}">${starIcon(fav)}<span>${fav ? 'Favori' : 'Ajouter aux favoris'}</span></button>
@@ -137,10 +139,45 @@ function draw(el, st, tab, ctx) {
   const body = el.querySelector('#tabBody');
   if (tab === 'champions') drawChampions(body, st, ctx);
   else if (tab === 'maitrise') drawMastery(body, st);
+  else if (tab === 'saisons') drawSeasons(body, st);
   else if (tab === 'direct') drawLive(body, st, ctx, el);
   else drawOverview(body, st, ctx);
   if (tab !== 'direct') checkLive(el, st, ctx);
   loadSeason(el, st, ctx);
+}
+
+/* ---------- Peak et saisons ---------- */
+// Riot ne fournit ni le peak ni les saisons passées : ces rangs sont ceux que cupcake.gg
+// a enregistrés lui-même (profil consulté, joueur croisé en partie ou en direct).
+const rankLine = (r) => (r ? `${esc(rankText(r))} · ${num(r.lp)} LP` : '–');
+function peakPill(s) {
+  const p = s.peak;
+  if (!p) return '';
+  return `<a class="peak-pill" href="${playerHref(s.platform, s.name, s.tag, 'saisons')}" title="Meilleur rang Solo/Duo enregistré">${crest(p, 'xs')}<span><small>Peak</small><b>${rankLine(p)}</b></span><em>Saison ${esc(p.season)}</em></a>`;
+}
+function seasonCell(box, label) {
+  if (!box) return `<div class="ss-q ss-empty"><small>${label}</small><span class="muted">Aucune donnée</span></div>`;
+  const pk = box.peak;
+  const last = box.last;
+  const games = last && last.w != null ? last.w + last.l : null;
+  return `<div class="ss-q"><small>${label}</small>
+    <div class="ss-rows">
+      <div class="ss-r">${crest(pk, 'sm')}<span><em>Peak</em><b>${rankLine(pk)}</b></span></div>
+      <div class="ss-r">${crest(last, 'sm')}<span><em>Dernier rang connu</em><b>${rankLine(last)}</b>${games ? `<small>${last.w} V · ${last.l} D · ${pct(last.w, games)}</small>` : ''}</span></div>
+    </div></div>`;
+}
+function drawSeasons(body, st) {
+  const s = st.sum;
+  const list = s.seasons || [];
+  body.innerHTML = `<section class="panel seasons">
+    <div class="panel-title"><h2>Saisons</h2>${s.peak ? `<span class="muted small">Peak : ${rankLine(s.peak)} (saison ${esc(s.peak.season)})</span>` : ''}</div>
+    ${list.length
+      ? `<div class="ss-list">${list
+          .map((x) => `<article class="ss-card${x.season === s.current ? ' cur' : ''}"><header><b>Saison ${esc(x.season)}</b>${x.season === s.current ? '<span class="ss-now">en cours</span>' : ''}</header><div class="ss-grid">${seasonCell(x.solo, 'Classée Solo/Duo')}${seasonCell(x.flex, 'Classée Flex')}</div></article>`)
+          .join('')}</div>`
+      : '<p class="empty-hint">Aucun rang enregistré pour ce joueur.</p>'}
+    <p class="muted small ss-note">Riot ne communique pas les rangs des saisons passées. cupcake.gg enregistre lui-même le meilleur rang et le dernier rang connu de chaque saison, à chaque fois que ce joueur est consulté ou croisé dans une partie : l’historique se complète au fil du temps.</p>
+  </section>`;
 }
 
 /* ---------- Parties jouées cette saison ---------- */

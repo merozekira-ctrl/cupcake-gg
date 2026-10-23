@@ -186,7 +186,7 @@
 .lr:not(.lr-head):hover {
   border-color: var(--line-strong);
   transform: translateX(3px);
-  background: linear-gradient(90deg, rgba(255, 111, 174, 0.08), transparent 55%), var(--card-hi);
+  background: linear-gradient(90deg, rgba(255, 46, 77, 0.08), transparent 55%), var(--card-hi);
 }
 :root[data-theme='light'] .lr:not(.lr-head):hover {
   background: #fff;
@@ -416,7 +416,7 @@
   height: 40px;
   padding: 0 6px 0 4px;
   border-radius: 11px;
-  border: 1px solid rgba(255, 111, 174, 0.6);
+  border: 1px solid rgba(255, 46, 77, 0.6);
   background: var(--accent-soft);
   font-weight: 700;
 }
@@ -480,7 +480,7 @@
 }
 .mu-title em {
   font-style: normal;
-  background: linear-gradient(92deg, #ff6fae, #c06cff 60%, #8b7cff);
+  background: linear-gradient(92deg, #ff2e4d, #2f7bff 60%, #2f7bff);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -555,7 +555,7 @@
   text-align: right;
 }
 .slot.active {
-  border-color: rgba(255, 111, 174, 0.75);
+  border-color: rgba(255, 46, 77, 0.75);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 :root[data-theme='light'] .slot.active {
@@ -644,7 +644,7 @@
   filter: grayscale(0.85) brightness(0.55);
 }
 .cgrid button.sel .ic {
-  box-shadow: 0 0 0 2px var(--accent), 0 0 16px rgba(255, 111, 174, 0.55);
+  box-shadow: 0 0 0 2px var(--accent), 0 0 16px rgba(255, 46, 77, 0.55);
 }
 :root[data-theme='light'] .cgrid button.sel .ic {
   box-shadow: 0 0 0 2px #0b0b12;
@@ -949,8 +949,8 @@
   transform: translateX(2px);
 }
 .pn-item[aria-current='page'] {
-  border-color: rgba(255, 111, 174, 0.7);
-  background: linear-gradient(100deg, rgba(255, 111, 174, 0.16), rgba(139, 124, 255, 0.1)), var(--card);
+  border-color: rgba(255, 46, 77, 0.7);
+  background: linear-gradient(100deg, rgba(255, 46, 77, 0.16), rgba(47, 123, 255, 0.1)), var(--card);
 }
 :root[data-theme='light'] .pn-item[aria-current='page'] {
   background: #0b0b12;

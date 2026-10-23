@@ -2,7 +2,7 @@
 import {
   S, api, esc, DEMO_NOTE, num, dec, pct, kdaText, kdaRatio, ago, champImg, champOf, champByKey, champHref, itemImg, spellImg,
   runeImg, abilityImg, passiveImg, splashUrl, loadingUrl, roleIcon, ROLES, ROLE_ORDER, CLASSES, rich, crest, rankText,
-  regionOptions, setPlatform, setTitle, loading, errorState, store, toast, playerHref, norm, wrBadge, proBadge, roleBar, patchLabel,
+  regionOptions, profileImg, setPlatform, setTitle, loading, errorState, store, toast, playerHref, norm, wrBadge, proBadge, roleBar, patchLabel,
 } from '../core.js';
 
 const cmpPatch = (a, b) => {
@@ -50,7 +50,7 @@ export function tierRows(P, role) {
       continue;
     }
     const q = reliable.indexOf(r) / Math.max(1, reliable.length);
-    r.tier = q < 0.1 ? 'S' : q < 0.3 ? 'A' : q < 0.6 ? 'B' : q < 0.85 ? 'C' : 'D';
+    r.tier = q < 0.04 ? 'S+' : q < 0.12 ? 'S' : q < 0.3 ? 'A' : q < 0.6 ? 'B' : q < 0.85 ? 'C' : 'D';
   }
   // Les choix trop rares (moins de 3 parties) passent en fin de liste.
   return [...reliable, ...rows.filter((r) => r.c.g < 3)];
@@ -300,7 +300,7 @@ function drawTier(body, ctx) {
             (r, i) => `<tr class="clickable${r.tier === '?' ? ' rare' : ''}" data-href="${champHref(r.champ, role)}">
             <td class="num"><span class="rank-n">${i + 1}</span></td>
             <td><div class="cell-player">${champImg(r.id, 40)}<div class="pn"><a href="${champHref(r.champ, role)}">${esc(r.champ.name)}</a><small>${esc((r.champ.tags || []).map((t) => CLASSES[t] || t).join(', '))}</small></div></div></td>
-            <td><span class="tier tier-${r.tier === '?' ? 'D' : r.tier}" title="${r.tier === '?' ? 'Moins de 3 parties : pas assez de données' : 'Tier ' + r.tier}">${r.tier}</span></td>
+            <td><span class="tier tier-${r.tier === '?' ? 'D' : r.tier.replace('+', 'P')}" title="${r.tier === '?' ? 'Moins de 3 parties : pas assez de données' : 'Tier ' + r.tier}">${r.tier}</span></td>
             <td class="num">${wrBadge(r.c.w, r.c.g, { d: 1 })}</td>
             <td><div class="pr-cell"><span class="num">${pct(r.pr, 1, 1)}</span><div class="bar"><i style="width:${(r.pr / maxPr) * 100}%"></i></div></div></td>
             <td class="num">${pct(r.br, 1, 1)}</td>
@@ -576,6 +576,26 @@ function muRow(x) {
   return `<a class="mu" href="${href}">${champImg(x.id, 30)}<span class="grow">${esc(ch?.name || '?')}</span>${wrBadge(x.w, x.n)}<small class="muted">${x.n} p.</small></a>`;
 }
 
+const PB_IC = new Map();
+
+// Icônes d’invocateur absentes des anciennes parties : chargées après coup.
+function fillPbIcons(body) {
+  const els = [...body.querySelectorAll('[data-pbic]')].filter((e) => e.dataset.pbic && !PB_IC.has(e.dataset.pbic));
+  const ids = [...new Set(els.map((e) => e.dataset.pbic))].slice(0, 25);
+  if (!ids.length) return;
+  ids.forEach((id) => PB_IC.set(id, null));
+  api(`/ladder-id?ids=${ids.map((id) => `${S.platform}:${id}`).join(',')}`)
+    .then((res) => {
+      for (const id of ids) {
+        const icon = res[id]?.icon;
+        if (icon == null) { PB_IC.delete(id); continue; }
+        PB_IC.set(id, icon);
+        body.querySelectorAll(`[data-pbic="${CSS.escape(id)}"]`).forEach((e) => (e.outerHTML = profileImg(icon, 40, true)));
+      }
+    })
+    .catch(() => {});
+}
+
 function playersTab(R, cm, filter, limit = 15) {
   const pros = Object.fromEntries((cm.pros || []).map((x) => [x.puuid, x]));
   let list = R.recent || [];
@@ -587,9 +607,12 @@ function playersTab(R, cm, filter, limit = 15) {
     .map((g) => {
       const pro = pros[g.pu];
       const items = g.ord?.length ? [...g.ord] : g.it.slice(0, 6).filter(Boolean);
+      const ic = g.ic ?? PB_IC.get(g.pu);
+      const av = `<span class="pb-av">${ic != null ? profileImg(ic, 40, true) : `<span class="pb-av-ph" data-pbic="${esc(g.pu || '')}">${esc((g.n || '?').slice(0, 1).toUpperCase())}</span>`}${g.tier ? `<span class="pb-crest">${crest({ tier: g.tier }, 'sm')}</span>` : ''}</span>`;
+      const rank = g.tier ? `${esc(rankText({ tier: g.tier }))}${g.lp != null ? ` · ${num(g.lp)} LP` : ''}` : '';
       const who = pro
-        ? `<span class="pro-badge">${esc(pro.team || 'Pro')}</span><span class="pl-name"><a href="${playerHref(pro.platform, ...pro.riotId.split('#'))}">${esc(pro.label)}</a><small>${esc(pro.riotId)}</small></span>`
-        : `${g.tier ? crest({ tier: g.tier }, 'sm') : ''}<span class="pl-name">${g.tg ? `<a href="${playerHref(S.platform, g.n, g.tg)}">${esc(g.n)}</a>` : `<span>${esc(g.n || 'Joueur')}</span>`}${g.pro ? proBadge(g.pro) : `<small>${g.tier ? `${esc(rankText({ tier: g.tier }))}${g.lp != null ? ` ${num(g.lp)} LP` : ''}` : ''}</small>`}</span>`;
+        ? `${av}<span class="pl-name"><a href="${playerHref(pro.platform, ...pro.riotId.split('#'))}">${esc(pro.label)}</a><small><span class="pro-badge">${esc(pro.team || 'Pro')}</span> ${esc(pro.riotId)}</small></span>`
+        : `${av}<span class="pl-name">${g.tg ? `<a href="${playerHref(S.platform, g.n, g.tg)}">${esc(g.n)}</a>` : `<span>${esc(g.n || 'Joueur')}</span>`}<small>${g.pro ? proBadge(g.pro) : ''}${rank ? `<span>${rank}</span>` : g.tg ? `<span>#${esc(g.tg)}</span>` : ''}</small></span>`;
       return `<div class="pb ${g.w ? 'win' : 'loss'}">
         <div class="pb-who">${who}</div>
         <div class="pb-vs">${g.vs ? `<span class="muted small">contre</span>${champImg(g.vs, 28)}` : ''}</div>
@@ -758,7 +781,7 @@ export async function renderChampion(el, { id }, ctx) {
           </div>
         </div>
         ${R ? `<div class="hero-stats">
-          ${tierRow ? `<div class="hs"><small>Tier</small><span class="tier tier-${tierRow.tier === '?' ? 'D' : tierRow.tier}">${tierRow.tier}</span></div>` : ''}
+          ${tierRow ? `<div class="hs"><small>Tier</small><span class="tier tier-${tierRow.tier === '?' ? 'D' : tierRow.tier.replace('+', 'P')}">${tierRow.tier}</span></div>` : ''}
           <div class="hs"><small>Winrate</small>${wrBadge(R.w, R.g, { lg: true, d: 1 })}</div>
           ${stat('Sélection', pct(R.g, cm.games, 1))}
           ${mode === 'arena' ? stat('Top 1', pct(R.top1 || 0, R.g, 1)) + stat('Place moyenne', dec((R.place || 0) / R.g, 2)) : stat('Bannissement', pct(cm.bans, cm.games, 1))}
@@ -812,6 +835,7 @@ export async function renderChampion(el, { id }, ctx) {
         body.innerHTML = playersTab(R, cm, f, limit);
         body.querySelectorAll('[data-pf]').forEach((b) => b.addEventListener('click', () => paint(b.dataset.pf)));
         body.querySelector('#pbMore')?.addEventListener('click', () => paint(f, limit + 15));
+        fillPbIcons(body);
       };
       paint('all');
     }

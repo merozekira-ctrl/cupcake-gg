@@ -157,7 +157,7 @@
   position: absolute;
   inset: 10% 4% 16%;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(74, 168, 255, 0.5), rgba(255, 111, 174, 0.22) 45%, transparent 70%);
+  background: radial-gradient(circle, rgba(74, 168, 255, 0.5), rgba(255, 46, 77, 0.22) 45%, transparent 70%);
   filter: blur(26px);
   animation: halo 4.5s ease-in-out infinite;
 }
@@ -193,7 +193,7 @@
   letter-spacing: -0.02em;
 }
 .hero-word .brand-tld {
-  filter: drop-shadow(0 0 22px rgba(255, 111, 174, 0.35));
+  filter: drop-shadow(0 0 22px rgba(255, 46, 77, 0.35));
 }
 :root[data-theme='light'] .hero-word .brand-tld {
   filter: none;
@@ -368,9 +368,9 @@
   background: var(--hc, var(--grad));
   opacity: 0.85;
 }
-.hc-tier { --hc: linear-gradient(90deg, #ff6fae, #ffa3cf); }
+.hc-tier { --hc: linear-gradient(90deg, #ff2e4d, #ff6a7f); }
 .hc-ladder { --hc: linear-gradient(90deg, #4aa8ff, #4ce0e6); }
-.hc-patch { --hc: linear-gradient(90deg, #8b7cff, #c06cff); }
+.hc-patch { --hc: linear-gradient(90deg, #2f7bff, #2f7bff); }
 :root[data-theme='light'] .hc::after {
   background: #0b0b12;
 }
@@ -696,7 +696,7 @@
   width: 120px;
   height: 120px;
   border-radius: 50%;
-  background: radial-gradient(circle, var(--fc, rgba(255, 111, 174, 0.25)), transparent 70%);
+  background: radial-gradient(circle, var(--fc, rgba(255, 46, 77, 0.25)), transparent 70%);
 }
 :root[data-theme='light'] .feat::before {
   display: none;
@@ -709,7 +709,7 @@
   border-radius: 14px;
   background: var(--fg, var(--grad-btn));
   color: #fff;
-  box-shadow: 0 10px 22px -12px var(--fs, rgba(255, 111, 174, 0.9));
+  box-shadow: 0 10px 22px -12px var(--fs, rgba(255, 46, 77, 0.9));
 }
 :root[data-theme='light'] .feat-ic {
   background: #0b0b12;
@@ -729,7 +729,7 @@
   font-size: 12.5px;
   line-height: 1.35;
 }
-.feat-mu { --fg: linear-gradient(135deg, #ff6fae, #c06cff); --fc: rgba(255, 111, 174, 0.22); }
+.feat-mu { --fg: linear-gradient(135deg, #ff2e4d, #2f7bff); --fc: rgba(255, 46, 77, 0.22); }
 .feat-otp { --fg: linear-gradient(135deg, #4aa8ff, #4ce0e6); --fc: rgba(74, 168, 255, 0.22); --fs: rgba(74, 168, 255, 0.9); }
 .feat-live { --fg: linear-gradient(135deg, #3ee0a1, #4ce0e6); --fc: rgba(62, 224, 161, 0.2); --fs: rgba(62, 224, 161, 0.9); }
 .feat-free { --fg: linear-gradient(135deg, #f7c35f, #ff9a5c); --fc: rgba(247, 195, 95, 0.2); --fs: rgba(247, 195, 95, 0.9); }

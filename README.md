@@ -1,6 +1,6 @@
 # cupcake.gg
 
-Site de statistiques League of Legends qui réunit les fonctions principales d'op.gg, DeepLoL et League of Graphs : profil, historique détaillé, partie en direct, tier list, classement, multi-recherche et encyclopédie. Thème sombre et thème clair noir et blanc.
+Site de statistiques League of Legends : profil, historique détaillé, partie en direct, tier list, classement, multi-recherche et encyclopédie. Thème sombre et thème clair noir et blanc.
 
 ## Démarrer
 

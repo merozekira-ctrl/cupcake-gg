@@ -5,8 +5,11 @@ import {
   pushRecent, isFav, toggleFav, toast, errorState, loading, setTitle, setPlatform, TIERS, proBadge, wrBadge,
 } from '../core.js';
 import { matchCard, bindMatchList, resultOf } from './match.js';
+import { gameStats, chartPanel, rankIa, summaryBlock, dayHeader, groupByDay, champHighlights } from './profile-extra.js';
+import { roleBar, scoreMatch, levelRing } from '../core.js';
 
 const cache = new Map();
+const MATE_IC = new Map();
 let liveTimer = null;
 
 const TABS = [
@@ -85,7 +88,7 @@ function draw(el, st, tab, ctx) {
     <section class="profile-head">
       <div class="avatar">${profileImg(s.icon, 88)}<span class="avatar-lvl" title="Niveau d’invocateur">${s.level}</span></div>
       <div class="grow">
-        <h1 class="p-name">${esc(s.name)} <span>#${esc(s.tag)}</span>${proBadge(s.pro)}</h1>
+        <h1 class="p-name">${esc(s.name)} <span>#${esc(s.tag)}</span>${proBadge(s.pro)}${s.pro && s.pro.kind === 'pro' && s.pro.label && s.pro.label.toLowerCase() !== s.name.toLowerCase() ? `<small class="pro-alias" title="Nom de joueur pro">alias pro <b>${esc(s.pro.label)}</b></small>` : ''}</h1>
         <div class="p-meta">
           <span>${esc(S.cfg.platforms[s.platform].name)}</span>
           <span>Niveau ${s.level}</span>
@@ -283,11 +286,13 @@ function summarize(items, puuid) {
     c.vis += me.vis / min;
     c.kp += tk ? (me.k + me.a) / tk : 0;
     if (me.pos && !arena) out.roles[me.pos] = (out.roles[me.pos] || 0) + 1;
+    const scm = scoreMatch(m);
     for (const p of group) {
       if (p === me || !p.puuid || !p.tag) continue;
-      const x = out.mates[p.puuid] || (out.mates[p.puuid] = { name: p.name, tag: p.tag, n: 0, w: 0 });
+      const x = out.mates[p.puuid] || (out.mates[p.puuid] = { puuid: p.puuid, name: p.name, tag: p.tag, n: 0, w: 0, sc: 0 });
       x.n++;
       x.w += won;
+      x.sc += (scm.scores[m.parts.indexOf(p)] || 0) * 10;
     }
   }
   out.champList = Object.values(out.champs).sort((a, b) => b.n - a.n || b.w - a.w);
@@ -362,6 +367,8 @@ function drawOverview(body, st, ctx) {
     <div class="profile-grid">
       <aside class="stack">
         <section class="panel" aria-label="Rangs classés">${rankCard('Classée Solo/Duo', s.ranked.solo)}${rankCard('Classée Flex', s.ranked.flex)}</section>
+        <section class="panel chart-panel" id="chartBox" aria-label="Graphique">${loading()}</section>
+        <section class="panel card-accent" id="iaBox" aria-label="Rank IA">${loading()}</section>
         <section class="panel card-accent" id="seasonBox" aria-label="Saison en cours">${seasonHtml(st)}</section>
         <section class="panel" aria-labelledby="h-rc">
           <div class="panel-title"><h2 id="h-rc">Champions récents</h2><span class="muted small" id="rcCount"></span></div>
@@ -375,6 +382,7 @@ function drawOverview(body, st, ctx) {
       <div>
         <section class="panel summary" id="summary" aria-label="Résumé des parties chargées">${loading()}</section>
         <div class="filters">
+          ${roleBar(st.role || 'ALL')}
           <div class="chips" role="group" aria-label="Filtrer par file">
             ${FILTERS.map(([id, label]) => `<button class="chip" type="button" data-f="${id}" aria-pressed="${id === st.filter}">${label}</button>`).join('')}
           </div>
@@ -395,13 +403,18 @@ function drawOverview(body, st, ctx) {
     })
   );
 
-  let rendered = 0;
+  body.querySelectorAll('.filters [data-role]').forEach((b) =>
+    b.addEventListener('click', () => {
+      st.role = b.dataset.role;
+      body.querySelectorAll('.filters [data-role]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+      paint(true);
+    })
+  );
+  const roleOk = (m) => !st.role || st.role === 'ALL' || m.parts.find((p) => p.puuid === s.puuid)?.pos === st.role;
+
   const paint = async (reset) => {
     const f = st.filter;
-    if (reset) {
-      rendered = 0;
-      list.innerHTML = '';
-    }
+    if (reset) list.innerHTML = '';
     let L = st.lists[f];
     if (!L || (!L.items.length && L.more && !L.error)) {
       body.querySelector('#more').innerHTML = loading('Chargement des parties…');
@@ -410,15 +423,24 @@ function drawOverview(body, st, ctx) {
       L = st.lists[f];
       if (!ctx.alive() || st.filter !== f) return;
     }
-    if (L.items.length > rendered) {
-      list.insertAdjacentHTML('beforeend', L.items.slice(rendered).map((m) => matchCard(m, s.puuid, s.platform)).join(''));
-      rendered = L.items.length;
+    const items = L.items.filter(roleOk);
+    // Historique groupé par jour (les détails ouverts restent ouverts : seules les nouvelles parties sont ajoutées).
+    const open = new Set([...list.querySelectorAll('.m-toggle[aria-expanded="true"]')].map((t) => t.closest('.match-wrap').dataset.id));
+    // Badge pro du joueur suivi aussi dans ses parties (même s'il a été reconnu après leur chargement).
+    if (s.pro) for (const m of items) for (const p of m.parts) if (p.puuid === s.puuid && !p.pro) p.pro = s.pro;
+    list.innerHTML = groupByDay(items)
+      .map((g) => `<section class="day">${dayHeader(g.items, s.puuid)}${g.items.map((m) => matchCard(m, s.puuid, s.platform)).join('')}</section>`)
+      .join('');
+    open.forEach((id) => list.querySelector(`.match-wrap[data-id="${CSS.escape(id)}"] .m-toggle`)?.click());
+    if (!items.length && !L.error) {
+      list.innerHTML = `<div class="panel state"><p class="state-title">Aucune partie</p><p>Aucune partie récente pour ce filtre${st.role && st.role !== 'ALL' ? ' et ce rôle' : ''}.</p></div>`;
     }
-    if (!L.items.length && !L.error) {
-      list.innerHTML = `<div class="panel state"><p class="state-title">Aucune partie</p><p>Aucune partie récente pour ce filtre.</p></div>`;
-    }
-    const sm = summarize(L.items, s.puuid);
-    body.querySelector('#summary').innerHTML = summaryHtml(sm);
+    const sm = summarize(items, s.puuid);
+    const games = gameStats(items, s.puuid);
+    body.querySelector('#summary').innerHTML = summaryBlock(sm, games);
+    const allGames = gameStats(L.items, s.puuid);
+    body.querySelector('#chartBox').innerHTML = chartPanel(s, allGames);
+    body.querySelector('#iaBox').innerHTML = rankIa(s, allGames);
     body.querySelector('#rcCount').textContent = sm.n ? `${sm.n} parties` : '';
     body.querySelector('#recentChamps').innerHTML = sm.champList.length
       ? `<ul class="mini-list">${sm.champList
@@ -431,9 +453,24 @@ function drawOverview(body, st, ctx) {
       : '<p class="muted small" style="padding:0 16px 16px">Pas encore de parties chargées.</p>';
     body.querySelector('#duos').innerHTML = sm.mateList.length
       ? `<ul class="mini-list">${sm.mateList
-          .map((x) => `<li><span class="crest crest-sm" data-tier="NONE" aria-hidden="true"><span>${esc(x.name.slice(0, 1).toUpperCase())}</span></span><div class="nm"><a href="${playerHref(s.platform, x.name, x.tag)}">${esc(x.name)}</a><div class="sub">#${esc(x.tag)}</div></div><div class="val"><b>${x.w}V ${x.n - x.w}D</b><div class="sub">${pct(x.w, x.n)}</div></div></li>`)
+          .map((x) => `<li>${MATE_IC.has(x.puuid) && MATE_IC.get(x.puuid) != null ? profileImg(MATE_IC.get(x.puuid), 34, true) : `<span class="mate-ic skel" data-mate="${esc(x.puuid)}"></span>`}<div class="nm"><a href="${playerHref(s.platform, x.name, x.tag)}">${esc(x.name)}</a><div class="sub">#${esc(x.tag)}</div></div><div class="val"><b>${x.w}V ${x.n - x.w}D</b><div class="sub">${pct(x.w, x.n)}</div></div>${levelRing(x.sc / x.n, { size: 'sm', avatar: true })}</li>`)
           .join('')}</ul>`
       : '<p class="muted small" style="padding:0 16px 16px">Aucun joueur croisé au moins deux fois dans les parties chargées.</p>';
+    const missing = sm.mateList.filter((x) => !MATE_IC.has(x.puuid));
+    if (missing.length) {
+      missing.forEach((x) => MATE_IC.set(x.puuid, null));
+      api(`/ladder-id?ids=${missing.map((x) => `${s.platform}:${x.puuid}`).join(',')}`)
+        .then((ids) => {
+          for (const x of missing) {
+            const icon = ids[x.puuid]?.icon;
+            MATE_IC.set(x.puuid, icon ?? null);
+            const el2 = body.querySelector(`[data-mate="${CSS.escape(x.puuid)}"]`);
+            if (el2 && icon != null) el2.outerHTML = profileImg(icon, 34, true);
+            else if (el2) el2.classList.remove('skel');
+          }
+        })
+        .catch(() => {});
+    }
 
     const more = body.querySelector('#more');
     if (L.error) {
@@ -486,6 +523,7 @@ async function drawChampions(body, st, ctx) {
     k === 'n' ? c.n : k === 'wr' ? c.w / c.n : k === 'kda' ? kdaRatio(c.k, c.d, c.a) : c[k] / c.n;
   const rows = [...sm.champList].sort((a, b) => val(b, st.champSort) - val(a, st.champSort) || b.n - a.n);
   body.innerHTML = `
+    ${champHighlights(items, s.puuid, s.mastery)}
     <div class="toolbar">
       <p class="muted grow">Statistiques calculées sur les ${sm.n} parties chargées, toutes files confondues.</p>
       ${st.lists.all.more ? '<button class="btn" type="button" id="moreChamps">Charger 10 parties de plus</button>' : ''}
@@ -544,6 +582,7 @@ function drawMastery(body, st, all = false) {
   const tiers = {};
   for (const m of list) tiers[masteryTier(m.lvl)] = (tiers[masteryTier(m.lvl)] || 0) + 1;
   body.innerHTML = `
+    ${champHighlights(st.lists.all?.items || [], st.sum.puuid, st.sum.mastery)}
     <div class="toolbar"><p class="muted grow">${list.length} champions, ${num(total)} points de maîtrise au total.</p></div>
     <div class="m-legend" aria-label="Paliers de maîtrise">${MASTERY_TIERS.map((name, t) =>
       `<span class="m-leg${tiers[t] ? '' : ' off'}" data-t="${t}"><i aria-hidden="true"></i>${name}<small>${t === 0 ? 'niv. 1 à 9' : t < 10 ? `niv. ${t * 10} à ${t * 10 + 9}` : t === 10 ? 'niv. 100 à 199' : t === 11 ? 'niv. 200 à 299' : 'niv. 300 et plus'}</small><b>${tiers[t] || 0}</b></span>`).join('')}</div>

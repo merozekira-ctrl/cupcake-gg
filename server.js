@@ -701,6 +701,36 @@ function compactLeague(entries) {
   return out;
 }
 
+/* ---------- Historique de LP (un point à chaque consultation du profil) ---------- */
+// Riot ne fournit pas l'historique des LP : on enregistre le rang à chaque visite (1 point par heure max).
+const lpFile = path.join(DATA_DIR, 'lp-history.json');
+let lpMem = null;
+let lpTimer = null;
+const TIER_IDX = ['IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'EMERALD', 'DIAMOND', 'MASTER', 'GRANDMASTER', 'CHALLENGER'];
+const DIV_IDX = { IV: 0, III: 1, II: 2, I: 3 };
+// Valeur continue : 400 points par palier (100 par division), LP au-delà de Maître ajoutés tels quels.
+const lpValue = (r) => {
+  const t = TIER_IDX.indexOf(r.tier);
+  if (t < 0) return null;
+  return t >= 7 ? 2800 + r.lp : t * 400 + (DIV_IDX[r.rank] ?? 0) * 100 + r.lp;
+};
+async function recordLp(puuid, solo) {
+  if (!lpMem) lpMem = await readJson(lpFile, {});
+  const list = lpMem[puuid] || (lpMem[puuid] = []);
+  if (solo) {
+    const v = lpValue(solo);
+    const last = list[list.length - 1];
+    const now = Date.now();
+    if (v != null && (!last || last.v !== v || now - last.t > 24 * 3600e3) && (!last || now - last.t > 3600e3 || last.v !== v)) {
+      list.push({ t: now, v, tier: solo.tier, rank: solo.rank, lp: solo.lp });
+      if (list.length > 200) list.splice(0, list.length - 200);
+      clearTimeout(lpTimer);
+      lpTimer = setTimeout(() => writeJson(lpFile, lpMem).catch(() => {}), 5000);
+    }
+  }
+  return list.slice(-60);
+}
+
 async function getSummoner(platform, name, tag, force) {
   name = name.trim();
   tag = tag.trim().replace(/^#/, '');
@@ -729,6 +759,11 @@ async function getSummoner(platform, name, tag, force) {
     indexPlayer(platform, acc.gameName, acc.tagLine, { icon: sum.profileIconId, tier: solo?.tier, lp: solo?.lp });
   }
   const [known] = await tagKnown([{ puuid: acc.puuid, name: acc.gameName, tag: acc.tagLine }]);
+  // Pas reconnu : recherche ponctuelle dans les sources publiques (3 s max, résultat mémorisé).
+  if (!known.pro) {
+    const found = await Promise.race([discoverPro(acc.puuid, acc.gameName, acc.tagLine), sleep(3000).then(() => null)]).catch(() => null);
+    if (found) known.pro = found;
+  }
   return {
     platform,
     puuid: acc.puuid,
@@ -738,6 +773,7 @@ async function getSummoner(platform, name, tag, force) {
     icon: sum.profileIconId,
     level: sum.summonerLevel,
     fetchedAt: Date.now(),
+    lpHistory: await recordLp(acc.puuid, compactLeague(league).solo).catch(() => []),
     ranked: compactLeague(league),
     mastery: (mastery || []).map((m) => ({
       c: m.championId,
@@ -856,7 +892,12 @@ async function getMatches(platform, puuid, q) {
       force: q.force === '1',
     })) || [];
   const matches = await Promise.all(ids.map((id) => getMatch(platform, id).catch(() => null)));
-  return { start, count, more: ids.length === count, matches: matches.filter(Boolean) };
+  const ok = matches.filter(Boolean);
+  // Badge pro ou streamer des joueurs croisés (copie : le cache garde la partie brute).
+  const out = ok.map((mm) => ({ ...mm, parts: mm.parts.map((pp) => ({ ...pp })) }));
+  for (const pp of out.flatMap((mm) => mm.parts)) if (pp.puuid && pp.tag) rememberName(pp.puuid, pp.name, pp.tag);
+  await tagKnown(out.flatMap((mm) => mm.parts));
+  return { start, count, more: ids.length === count, matches: out };
 }
 
 // Nombre de parties jouées depuis le début de la saison (toutes files), 100 identifiants par requête.
@@ -1053,6 +1094,36 @@ async function findDuos(platform, parts) {
   }
 }
 
+// Rang classé (Solo/Duo, sinon Flex) et badge pro des joueurs d'une partie (10 max).
+async function getRanks(platform, ids) {
+  const list = String(ids || '').split(',').map((x) => x.trim()).filter((x) => /^[\w-]{20,90}$/.test(x)).slice(0, 10);
+  const out = {};
+  await Promise.all(
+    list.map(async (id) => {
+      const l = await riot(platform, `/lol/league/v4/entries/by-puuid/${id}`, { ttl: 900 }).catch(() => null);
+      const c = compactLeague(l);
+      const r = c.solo || c.flex;
+      out[id] = r ? { tier: r.tier, rank: r.rank, lp: r.lp, q: c.solo ? 'solo' : 'flex' } : {};
+    })
+  );
+  await proFoundMap().catch(() => null);
+  const K = await knownList().catch(() => null);
+  if (K) for (const id of list) {
+    const nm = names.get(id);
+    const w = whoIs(K, id, nm?.name, nm?.tag);
+    if (w) out[id].pro = w;
+  }
+  // Joueurs pas encore connus : recherche dans la source « comptes » (3 s max en tout).
+  const todo = list.filter((id) => !out[id].pro && names.get(id)?.name);
+  if (todo.length) {
+    await Promise.race([
+      Promise.all(todo.map((id) => discoverPro(id, names.get(id).name, names.get(id).tag).then((p) => p && (out[id].pro = p)).catch(() => null))),
+      sleep(3000),
+    ]);
+  }
+  return out;
+}
+
 async function getLive(platform, puuid) {
   const g = await riot(platform, `/lol/spectator/v5/active-games/by-summoner/${puuid}`, { ttl: 30 });
   if (!g) return { live: false };
@@ -1095,6 +1166,13 @@ async function getLive(platform, puuid) {
   }
   await findDuos(platform, parts).catch(() => {});
   await tagKnown(parts.filter((p) => !p.hidden));
+  const todo = parts.filter((p) => !p.hidden && !p.pro && p.puuid && p.name);
+  if (todo.length) {
+    await Promise.race([
+      Promise.all(todo.map((p) => discoverPro(p.puuid, p.name, p.tag).then((x) => x && (p.pro = x)).catch(() => null))),
+      sleep(3000),
+    ]);
+  }
   return {
     live: true,
     id: g.gameId,
@@ -1653,6 +1731,7 @@ function aggregate(meta, m, tl, st, ladder, mode = 'sr') {
       pu: p.puuid,
       n: p.riotIdGameName || '',
       tg: p.riotIdTagline || '',
+      ic: p.profileIcon ?? null,
       tier: lad?.tier || '',
       lp: lad?.lp ?? null,
       w,
@@ -1897,7 +1976,22 @@ async function getMatchup(platform, q) {
       spells: count((x) => [[x.s1, x.s2].sort((a, b) => a - b).join('-')]).slice(0, 2),
     };
   }
-  return { ...base, role, roles, rows: games, opponents, summary };
+  // Duels les plus joués (page d'accueil des matchups, sans champion choisi).
+  let popular = [];
+  if (!champ) {
+    const seen = new Map();
+    for (const [k, c] of entries) {
+      const [id, r] = k.split('|');
+      for (const [o, [g, w]] of Object.entries(c.vs || {})) {
+        const a = Number(id);
+        const b = Number(o);
+        const key = a < b ? `${a}-${b}-${r}` : `${b}-${a}-${r}`;
+        if (!seen.has(key)) seen.set(key, { a, b, role: r, g, w });
+      }
+    }
+    popular = [...seen.values()].sort((x, y) => y.g - x.g).slice(0, 12);
+  }
+  return { ...base, role, roles, rows: games, opponents, summary, popular };
 }
 
 /* ---------- Patch notes ---------- */
@@ -2327,16 +2421,256 @@ async function removePro(puuid) {
   return list;
 }
 
+/* ---------- Annuaire automatique des joueurs pros ---------- */
+// Riot ne dit pas qui est pro. L'annuaire est construit à partir de deux sources publiques,
+// configurables par variables d'environnement (PRO_SOURCE_ACCOUNTS, PRO_SOURCE_WIKI) :
+// - la source « comptes » relie chaque pro à ses comptes classés (Riot ID), ce qui permet
+//   de le reconnaître dans une partie, en direct ou sur son profil ;
+// - la source « wiki » complète l'équipe actuelle d'un pro à partir de sa page joueur.
+// Résultat : data/pros-auto.json, rafraîchi toutes les PRO_DIR_HOURS heures (0 = désactivé).
+const PRODIR_FILE = path.join(DATA_DIR, 'pros-auto.json');
+const PRODIR_HOURS = clampInt(process.env.PRO_DIR_HOURS ?? 24, 0, 720, 24);
+const PRO_ACC_API = (process.env.PRO_SOURCE_ACCOUNTS || 'https://api.lolpros.gg/es').replace(/\/$/, '');
+const PRO_WIKI_API = process.env.PRO_SOURCE_WIKI || 'https://liquipedia.net/leagueoflegends/api.php';
+const PRO_PAGES = clampInt(process.env.PRO_DIR_PAGES, 1, 2000, 1000);
+const PRO_MAX = clampInt(process.env.PRO_DIR_MAX, 10, 50000, 20000);
+const PRO_UA = `cupcake.gg/1.0 (statistiques LoL; ${process.env.CONTACT_EMAIL || 'contact via le site'})`;
+const proDirJob = { running: false, at: 0, count: 0, error: null };
+
+async function fetchJson(url, ms = 15000) {
+  const r = await fetch(url, {
+    signal: AbortSignal.timeout(ms),
+    headers: { 'User-Agent': PRO_UA, Accept: 'application/json', 'Accept-Encoding': 'gzip' },
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+const asList = (j) => (Array.isArray(j) ? j : j?.items || j?.data || j?.results || j?.players || j?.['hydra:member'] || []);
+const str = (v) => (typeof v === 'string' ? v.trim() : '');
+
+// Parcourt un profil (forme libre) et relève les comptes : Riot ID (nom + tag), puuid, ancien pseudo.
+function accountsIn(node, out = [], depth = 0) {
+  if (!node || typeof node !== 'object' || depth > 6) return out;
+  if (Array.isArray(node)) {
+    for (const x of node) accountsIn(x, out, depth + 1);
+    return out;
+  }
+  const name = str(node.gamename) || str(node.game_name) || str(node.gameName) || str(node.riot_id?.split?.('#')[0]) || str(node.summoner_name) || str(node.summonerName);
+  const tag = str(node.tagline) || str(node.tag_line) || str(node.tagLine) || str(node.riot_id?.split?.('#')[1]);
+  const puuid = str(node.puuid);
+  const looksAccount = 'summoner_name' in node || 'summonerName' in node || 'gamename' in node || 'game_name' in node || 'gameName' in node || 'riot_id' in node || 'puuid' in node;
+  if (looksAccount && (puuid || name)) out.push({ name, tag, puuid });
+  for (const [k, v] of Object.entries(node)) if (v && typeof v === 'object' && k !== 'team' && k !== 'teams') accountsIn(v, out, depth + 1);
+  return out;
+}
+function teamOf(p) {
+  const t = p?.team || p?.league_player?.team || p?.current_team || p?.staff?.team;
+  if (!t) return '';
+  if (typeof t === 'string') return t;
+  return str(t.tag) || str(t.abbreviation) || str(t.short_name) || str(t.name);
+}
+const roleOf = (p) => (str(p?.position) || str(p?.league_player?.position) || str(p?.role)).replace(/^\d+_/, '');
+
+// Parcourt tout le classement de la source (toutes les pages) : les pros des ligues
+// mineures (Turquie, ERL, académies…) sont loin dans la liste mais doivent y être.
+// Les fiches complètes (tous les comptes, smurfs compris) sont relues par lots :
+// PRO_DIR_PROFILES par passage, en commençant par les plus anciennes.
+const PRO_PROFILES = clampInt(process.env.PRO_DIR_PROFILES, 50, 20000, 1500);
+async function crawlProAccounts(prev) {
+  const old = new Map((prev?.list || []).map((p) => [p.slug, p]));
+  const players = new Map();
+  for (let page = 1; page <= PRO_PAGES && players.size < PRO_MAX; page++) {
+    const j = await fetchJson(`${PRO_ACC_API}/ladder?page=${page}&sort=rank&order=desc`).catch(() => null);
+    const list = asList(j);
+    if (!list.length) break;
+    for (const p of list) {
+      const slug = str(p.slug) || str(p.uuid);
+      const label = str(p.name) || str(p.player_name);
+      if (!slug || !label || players.has(slug)) continue;
+      const o = old.get(slug);
+      const accounts = accountsIn(p.account || p.accounts || p.primary_account || p.league_player || {});
+      for (const a of o?.accounts || []) accounts.push(a);
+      players.set(slug, { slug, label, team: teamOf(p) || '', role: roleOf(p) || o?.role || '', accounts, at: o?.at || 0 });
+    }
+    await sleep(600);
+  }
+  // Fiches complètes : les plus anciennes d'abord, PRO_PROFILES par passage.
+  const todo = [...players.values()].sort((x, y) => x.at - y.at).slice(0, PRO_PROFILES);
+  for (const P of todo) {
+    const j = await fetchJson(`${PRO_ACC_API}/profiles/${encodeURIComponent(P.slug)}`).catch(() => null);
+    if (j) {
+      P.accounts.push(...accountsIn(j.league_player || j.accounts || j));
+      P.team = P.team || teamOf(j);
+      P.role = P.role || roleOf(j);
+      P.at = Date.now();
+    }
+    await sleep(600);
+  }
+  for (const P of players.values()) {
+    const seen = new Set();
+    P.accounts = P.accounts.filter((a) => {
+      const k = a.puuid || `${a.name}#${a.tag}`.toLowerCase();
+      if (!k || seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  }
+  return [...players.values()];
+}
+
+// Équipe actuelle depuis la page joueur du wiki (lots de 50 pages, une requête toutes les 2,5 s).
+async function wikiTeams(labels) {
+  const out = new Map();
+  const uniq = [...new Set(labels.filter(Boolean))];
+  for (let i = 0; i < uniq.length; i += 50) {
+    const titles = uniq.slice(i, i + 50).join('|');
+    const u = `${PRO_WIKI_API}?action=query&format=json&redirects=1&prop=revisions&rvprop=content&rvslots=main&titles=${encodeURIComponent(titles)}`;
+    const j = await fetchJson(u, 20000).catch(() => null);
+    const norm = new Map();
+    for (const r of j?.query?.redirects || []) norm.set(r.to, r.from);
+    for (const r of j?.query?.normalized || []) norm.set(r.to, r.from);
+    for (const pg of Object.values(j?.query?.pages || {})) {
+      const txt = pg?.revisions?.[0]?.slots?.main?.['*'] || pg?.revisions?.[0]?.['*'] || '';
+      const m = txt.match(/\|\s*team\s*=\s*([^\n|}]+)/i);
+      if (!m) continue;
+      const team = m[1].replace(/\[\[|\]\]|''+/g, '').replace(/<[^>]+>/g, '').trim();
+      if (team) out.set((norm.get(pg.title) || pg.title).toLowerCase(), team);
+    }
+    await sleep(2500);
+  }
+  return out;
+}
+const shortTeam = (t) => {
+  const s = String(t || '').trim();
+  if (s.length <= 12) return s;
+  const caps = s.split(/\s+/).map((w) => w[0]).join('').toUpperCase();
+  return caps.slice(0, 5);
+};
+
+async function refreshProDirectory() {
+  if (proDirJob.running) return;
+  proDirJob.running = true;
+  proDirJob.error = null;
+  try {
+    const prev = await readJson(PRODIR_FILE, null);
+    const players = await crawlProAccounts(prev);
+    if (!players.length) throw new Error('source comptes vide ou injoignable');
+    const teams = await wikiTeams(players.filter((p) => !p.team).map((p) => p.label)).catch(() => new Map());
+    const rows = [];
+    for (const p of players) {
+      // Joueur inscrit dans la source : pro, avec ou sans équipe en ce moment
+      // (un pro entre deux contrats reste un pro). Le badge affiche l'équipe si elle est connue.
+      const team = shortTeam(p.team || teams.get(p.label.toLowerCase()) || '');
+      for (const a of p.accounts) {
+        // Seulement des comptes identifiés sans ambiguïté : puuid, ou nom + tag.
+        if (!a.puuid && !(a.name && a.tag)) continue;
+        rows.push({ name: a.name || '', tag: a.tag || '', puuid: a.puuid || '', kind: 'pro', label: p.label, team, role: p.role, page: p.label, src: 'auto' });
+      }
+    }
+    await writeJson(PRODIR_FILE, { at: Date.now(), players: players.length, rows, list: players });
+    proDirJob.count = rows.length;
+    proDirJob.at = Date.now();
+    knownMem = null;
+    console.log(`  Annuaire des pros : ${players.length} joueurs, ${rows.length} comptes.`);
+  } catch (e) {
+    proDirJob.error = e.message;
+    console.log(`  Annuaire des pros indisponible : ${e.message}`);
+  } finally {
+    proDirJob.running = false;
+  }
+}
+
+/* ---------- Reconnaissance d'un pro à la demande ---------- */
+// Un badge pro n'est donné que sur une preuve solide : le compte (puuid, ou nom + tag exacts)
+// est relié à un joueur inscrit dans la source « comptes ». Pas de devinette sur le pseudo ni le rang.
+// Les résultats (positifs 7 jours, négatifs 2 jours) sont gardés dans data/pros-found-v4.json.
+const proFoundFile = path.join(DATA_DIR, 'pros-found-v4.json');
+let proFound = null;
+async function proFoundMap() {
+  if (!proFound) proFound = new Map(Object.entries(await readJson(proFoundFile, {})));
+  return proFound;
+}
+let proFoundSave = null;
+function saveProFound() {
+  clearTimeout(proFoundSave);
+  proFoundSave = setTimeout(() => writeJson(proFoundFile, Object.fromEntries(proFound)).catch(() => {}), 2000);
+}
+async function discoverPro(puuid, name, tag) {
+  const map = await proFoundMap();
+  const hit = map.get(puuid);
+  if (hit && Date.now() - hit.at < (hit.pro ? 7 : 2) * 86400e3) return hit.pro;
+  let pro = null;
+  const n = String(name || '').trim();
+  if (n.length >= 2) {
+    // Source « comptes » : le compte doit appartenir au joueur (puuid, ou nom + tag identiques)
+    // et le joueur doit avoir une équipe actuelle. Sinon : pas de badge.
+    const j = await fetchJson(`${PRO_ACC_API}/search?query=${encodeURIComponent(n)}`, 4000).catch(() => null);
+    for (const p of asList(j)) {
+      const team = shortTeam(teamOf(p));
+      const accs = accountsIn(p);
+      const ok = accs.some((a) => (a.puuid && a.puuid === puuid) || (a.name && a.tag && tag && a.name.toLowerCase() === n.toLowerCase() && a.tag.toLowerCase() === String(tag).toLowerCase()));
+      if (ok) {
+        pro = { kind: 'pro', label: (str(p.name) || n).slice(0, 24), team, twitch: '', src: 'accounts', page: str(p.name) || n };
+        break;
+      }
+    }
+  }
+  if (!pro && n.length >= 3) pro = await twitchStreamer(n).catch(() => null);
+  map.set(puuid, { pro, at: Date.now() });
+  saveProFound();
+  return pro;
+}
+
+/* ---------- Streamers sans « ttv » dans le pseudo ---------- */
+// Optionnel : nécessite TWITCH_CLIENT_ID et TWITCH_CLIENT_SECRET (application gratuite sur le
+// portail développeur Twitch). Un joueur est reconnu streamer seulement si les trois sont vrais :
+// - une chaîne porte exactement son pseudo (espaces et ponctuation retirés) ;
+// - la chaîne est partenaire ou affiliée (pas un compte vide au même nom) ;
+// - sa dernière catégorie diffusée est League of Legends.
+const TW_ID = process.env.TWITCH_CLIENT_ID || '';
+const TW_SECRET = process.env.TWITCH_CLIENT_SECRET || '';
+const TW_AUTH = (process.env.TWITCH_AUTH_BASE || 'https://id.twitch.tv').replace(/\/$/, '');
+const TW_API = (process.env.TWITCH_API_BASE || 'https://api.twitch.tv/helix').replace(/\/$/, '');
+const LOL_GAME_ID = '21779';
+let twTok = null;
+async function twitchToken() {
+  if (twTok && twTok.exp > Date.now() + 60e3) return twTok.v;
+  const r = await fetch(`${TW_AUTH}/oauth2/token?client_id=${encodeURIComponent(TW_ID)}&client_secret=${encodeURIComponent(TW_SECRET)}&grant_type=client_credentials`, { method: 'POST', signal: AbortSignal.timeout(5000) });
+  if (!r.ok) throw new Error(`Twitch auth ${r.status}`);
+  const j = await r.json();
+  twTok = { v: j.access_token, exp: Date.now() + (j.expires_in || 3600) * 1000 };
+  return twTok.v;
+}
+async function twitchGet(pathq) {
+  const tok = await twitchToken();
+  const r = await fetch(`${TW_API}${pathq}`, { headers: { 'Client-Id': TW_ID, Authorization: `Bearer ${tok}` }, signal: AbortSignal.timeout(4000) });
+  if (r.status === 401) twTok = null;
+  if (!r.ok) throw new Error(`Twitch ${r.status}`);
+  return r.json();
+}
+async function twitchStreamer(name) {
+  if (!TW_ID || !TW_SECRET) return null;
+  const login = String(name).toLowerCase().replace(/[^a-z0-9_]/g, '');
+  if (login.length < 4 || login.length > 25) return null;
+  const u = (await twitchGet(`/users?login=${login}`))?.data?.[0];
+  if (!u || !['partner', 'affiliate'].includes(u.broadcaster_type)) return null;
+  const ch = (await twitchGet(`/channels?broadcaster_id=${u.id}`))?.data?.[0];
+  if (!ch || String(ch.game_id) !== LOL_GAME_ID) return null;
+  return { kind: 'streamer', label: String(u.display_name || name).slice(0, 24), team: '', twitch: u.login, src: 'twitch' };
+}
+
 /* ---------- Pros et streamers reconnus ---------- */
 // Riot ne dit pas qui est pro ou streamer. Trois sources, dans l'ordre :
 // 1. les pros et streamers suivis (ajoutés depuis la tier list, fichier pros.json) ;
 // 2. la liste pros-list.json (seed/ puis data/), modifiable à la main ;
-// 3. la détection par le pseudo : « ttv », « twtv », « twitch »… (streamers).
+// 3. l'annuaire automatique pros-auto.json (voir plus haut) ;
+// 4. la détection par le pseudo : « ttv », « twtv », « twitch »… (streamers) ;
+// 5. à la demande : source « comptes » (pros) puis Twitch (streamers, si les clés sont fournies).
 const knownFile = path.join(DATA_DIR, 'pros-list.json');
 let knownMem = null;
 async function knownList() {
   if (knownMem && Date.now() - knownMem.at < 60e3) return knownMem.list;
-  const [list, followed] = await Promise.all([readJson(knownFile, []), readPros()]);
+  const [list, followed, auto] = await Promise.all([readJson(knownFile, []), readPros(), readJson(PRODIR_FILE, null)]);
   const byId = new Map();
   const byName = new Map();
   const entry = (x) => ({
@@ -2344,7 +2678,16 @@ async function knownList() {
     label: String(x.label || '').slice(0, 24),
     team: String(x.team || '').slice(0, 12),
     twitch: /^\w{3,25}$/.test(x.twitch || '') ? x.twitch : '',
+    ...(x.role ? { role: String(x.role).slice(0, 12) } : {}),
+    ...(x.page ? { page: String(x.page).slice(0, 60) } : {}),
   });
+  // L'annuaire automatique passe en premier : la liste manuelle et les suivis le corrigent.
+  for (const x of auto?.rows || []) {
+    if (!x || (!x.name && !x.puuid) || (!x.puuid && (!x.tag || x.tag === '*'))) continue;
+    const e = entry(x);
+    if (x.puuid) byId.set(x.puuid, e);
+    if (x.name) byName.set(`${x.name}#${x.tag || '*'}`.toLowerCase(), e);
+  }
   for (const x of Array.isArray(list) ? list : []) {
     if (!x || (!x.name && !x.puuid)) continue;
     const e = entry(x);
@@ -2365,6 +2708,8 @@ function whoIs(K, puuid, name, tag) {
   const n = String(name || '').trim();
   const hit = (puuid && K.byId.get(puuid)) || (n && (K.byName.get(`${n}#${tag || ''}`.toLowerCase()) || K.byName.get(`${n}#*`.toLowerCase())));
   if (hit) return hit;
+  const found = puuid && proFound?.get(puuid)?.pro;
+  if (found) return found;
   if (!n) return null;
   const m = n.match(STREAM_PREFIX) || n.match(STREAM_SUFFIX) || (/^(ttv|twtv|twitch|kick)$/i.test(tag || '') ? [n, n] : null);
   if (!m) return null;
@@ -2373,6 +2718,7 @@ function whoIs(K, puuid, name, tag) {
 }
 // Ajoute r.pro aux lignes reconnues. f(r) renvoie [puuid, nom, tag].
 async function tagKnown(rows, f = (r) => [r.puuid, r.name, r.tag]) {
+  await proFoundMap().catch(() => null);
   const K = await knownList().catch(() => ({ byId: new Map(), byName: new Map() }));
   for (const r of rows || []) {
     if (!r) continue;
@@ -2456,7 +2802,7 @@ const routes = [];
 const route = (method, re, fn) => routes.push({ method, re, fn });
 const P = '([a-z0-9]+)';
 
-route('GET', /^\/api\/config$/, () => ({ platforms: PLATFORMS, hasKey: !!KEY, demo: DEMO_ON, defaultPlatform: PLATFORMS[DEFAULT_PLATFORM] ? DEFAULT_PLATFORM : 'euw1' }));
+route('GET', /^\/api\/config$/, () => ({ platforms: PLATFORMS, hasKey: !!KEY, demo: DEMO_ON, proWiki: PRO_WIKI_API.replace(/api\.php.*$/, ''), defaultPlatform: PLATFORMS[DEFAULT_PLATFORM] ? DEFAULT_PLATFORM : 'euw1' }));
 route('GET', /^\/api\/static$/, () => getStatic());
 route('GET', /^\/api\/champion\/([A-Za-z0-9]+)$/, (m) => getChampion(m[1]));
 route('GET', new RegExp(`^/api/summoner/${P}/([^/]+)/([^/]+)$`), (m, q) => getSummoner(plat(m[1]), dec(m[2]), dec(m[3]), q.force === '1'));
@@ -2464,7 +2810,9 @@ route('GET', new RegExp(`^/api/matches/${P}/([\\w-]+)$`), (m, q) => getMatches(p
 route('GET', new RegExp(`^/api/match/${P}/([A-Z0-9]+_\\d+)$`), async (m) => {
   const match = await getMatch(plat(m[1]), m[2]);
   if (!match) throw new ApiError(404, 'Partie introuvable.');
-  return match;
+  const out = { ...match, parts: match.parts.map((pp) => ({ ...pp })) };
+  await tagKnown(out.parts);
+  return out;
 });
 route('GET', new RegExp(`^/api/season/${P}/([\\w-]+)$`), (m, q) => getSeasonCount(plat(m[1]), puuidParam(m[2]), q.force === '1'));
 route('GET', new RegExp(`^/api/timeline/${P}/([A-Z0-9]+_\\d+)$`), (m) => getTimeline(plat(m[1]), m[2]));
@@ -2473,6 +2821,11 @@ route('GET', new RegExp(`^/api/live/${P}/([\\w-]+)$`), (m) => getLive(plat(m[1])
 route('GET', new RegExp(`^/api/rotation/${P}$`), (m) => getRotation(plat(m[1])));
 route('GET', new RegExp(`^/api/status/${P}$`), (m) => getStatus(plat(m[1])));
 route('GET', new RegExp(`^/api/ladder/${P}$`), (m, q) => getLadder(m[1] === 'world' ? 'world' : plat(m[1]), q.queue, q.page));
+route('GET', new RegExp(`^/api/ranks/${P}$`), (m, q) => getRanks(plat(m[1]), q.ids));
+route('GET', /^\/api\/pro-directory$/, async () => {
+  const cur = await readJson(PRODIR_FILE, null);
+  return { at: cur?.at || 0, players: cur?.players || 0, accounts: cur?.rows?.length || 0, running: proDirJob.running, error: proDirJob.error };
+});
 route('GET', /^\/api\/ladder-id$/, (m, q) => getLadderIdentity(q.ids));
 route('GET', /^\/api\/ladder-stats$/, (m, q) => getLadderStats(q.ids));
 route('GET', /^\/api\/players$/, (m, q) => tagKnown(searchPlayers(q.q, q.p)));
@@ -2676,6 +3029,18 @@ function scheduleAutoMeta() {
   console.log(`  Analyse auto : ${games} parties toutes les ${hours} h (${plats.join(', ')} ; ${modes.join(', ')}).`);
 }
 
+// Annuaire des pros : au démarrage (si absent ou périmé) puis toutes les PRO_DIR_HOURS heures.
+function scheduleProDirectory() {
+  if (!PRODIR_HOURS) return;
+  const tick = async () => {
+    const cur = await readJson(PRODIR_FILE, null);
+    if (!cur || Date.now() - (cur.at || 0) > PRODIR_HOURS * 3600e3) refreshProDirectory();
+  };
+  setTimeout(tick, 15e3);
+  setInterval(tick, 3600e3);
+  console.log(`  Annuaire des pros : mise à jour toutes les ${PRODIR_HOURS} h.`);
+}
+
 /* ------------------------------------------------------------------ */
 /* Sauvegarde distante sur Cloudflare R2 (API S3, signature AWS v4)    */
 /* Pour les hébergeurs sans disque persistant (Render gratuit…).       */
@@ -2846,5 +3211,6 @@ server.listen(PORT, HOST, async () => {
   getStatic().catch((e) => console.warn(`  Data Dragon : ${e.message}`));
   if (r2On()) console.log(`  Sauvegarde Cloudflare R2 active (bucket ${R2.bucket}).`);
   scheduleAutoMeta();
+  scheduleProDirectory();
 });
 })();

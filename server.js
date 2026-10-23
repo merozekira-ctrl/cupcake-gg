@@ -745,6 +745,7 @@ async function recordLp(puuid, solo) {
 const peaksFile = path.join(DATA_DIR, 'peaks.json');
 let peaksMem = null;
 let peaksTimer = null;
+let peaksLoad = null;
 function seasonOf(t) {
   const d = new Date(t);
   const y = d.getUTCFullYear();
@@ -754,7 +755,11 @@ function seasonOf(t) {
 }
 async function recordPeaks(puuid, ranked) {
   if (!puuid || !ranked) return null;
-  if (!peaksMem) peaksMem = await readJson(peaksFile, {});
+  if (!peaksMem) {
+    peaksLoad = peaksLoad || readJson(peaksFile, {});
+    const loaded = await peaksLoad;
+    if (!peaksMem) peaksMem = loaded;
+  }
   const now = Date.now();
   const season = seasonOf(now);
   const P = peaksMem[puuid] || (peaksMem[puuid] = {});
@@ -1415,6 +1420,9 @@ async function apexRows(platform, qk, tiers) {
       rows.push({ p: platform, puuid: e.puuid || null, tier: l.tier, lp: e.leaguePoints, w: e.wins, l: e.losses, hot: !!e.hotStreak, vet: !!e.veteran, fresh: !!e.freshBlood });
     }
   }
+  // Chaque lecture du classement enregistre le rang de tous les joueurs Maître+ (peak et rang par saison).
+  const q = qk === 'RANKED_FLEX_SR' ? 'flex' : 'solo';
+  for (const r of rows) if (r.puuid) recordPeaks(r.puuid, { [q]: { tier: r.tier, rank: 'I', lp: r.lp, w: r.w, l: r.l } }).catch(() => null);
   return rows;
 }
 
@@ -3259,6 +3267,25 @@ function scheduleAutoMeta() {
   console.log(`  Analyse auto : ${games} parties toutes les ${hours} h (${plats.join(', ')} ; ${modes.join(', ')}).`);
 }
 
+// Relevé des rangs Maître+ (Solo/Duo et Flex) toutes les 6 h : peaks et rangs de fin de saison
+// enregistrés même pour les joueurs que personne n'a consultés. 6 requêtes par région et par relevé.
+function scheduleRankSnapshots() {
+  if (!KEY) return;
+  const hours = Number(process.env.RANK_SNAPSHOT_HOURS ?? 6);
+  if (!hours) return;
+  const plats = String(process.env.RANK_SNAPSHOT_PLATFORMS || DEFAULT_PLATFORM)
+    .split(',')
+    .map((x) => x.trim().toLowerCase())
+    .filter((x) => PLATFORMS[x]);
+  const run = async () => {
+    for (const p of plats)
+      for (const qk of ['RANKED_SOLO_5x5', 'RANKED_FLEX_SR']) await apexRows(p, qk, ['challengerleagues', 'grandmasterleagues', 'masterleagues']).catch(() => null);
+  };
+  setTimeout(run, 60e3);
+  setInterval(run, hours * 3600e3);
+  console.log(`  Relevé des rangs Maître+ : toutes les ${hours} h (${plats.join(', ')}).`);
+}
+
 // Annuaire des pros : au démarrage (si absent ou périmé) puis toutes les PRO_DIR_HOURS heures.
 function scheduleProDirectory() {
   if (!PRODIR_HOURS) return;
@@ -3442,5 +3469,6 @@ server.listen(PORT, HOST, async () => {
   if (r2On()) console.log(`  Sauvegarde Cloudflare R2 active (bucket ${R2.bucket}).`);
   scheduleAutoMeta();
   scheduleProDirectory();
+  scheduleRankSnapshots();
 });
 })();

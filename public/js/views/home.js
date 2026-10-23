@@ -18,7 +18,7 @@ export async function render(el, _params, ctx) {
   const patch = patchLabel(S.st.version);
   el.innerHTML = `
     <section class="hero">
-      <div class="hero-logo-wrap" aria-hidden="true"><img class="hero-logo" src="/brand/logo.webp" alt="" width="240" height="235"></div>
+      <div class="hero-logo-wrap" aria-hidden="true"><img class="hero-logo" src="/brand/logo.webp" alt="" width="300" height="213"></div>
       <div class="hero-word" aria-hidden="true">cupcake<span class="brand-tld">.gg</span></div>
       <h1>Profils, builds, matchups et parties en direct. <b>Gratuit, sans compte.</b></h1>
       <div class="hero-search" role="search">
@@ -55,17 +55,15 @@ export async function render(el, _params, ctx) {
         <div class="hc-foot"><a href="#/classement" id="ladMore">Voir tout le classement</a></div>
       </section>
       <section class="panel hc hc-patch" aria-labelledby="h-patch">
-        <div class="hc-head"><h2 id="h-patch"><a href="#/patch">Patch notes</a></h2><a class="small muted" href="#/otp">OTP</a></div>
+        <div class="hc-head"><h2 id="h-patch"><a href="#/patch">Patch notes</a></h2></div>
         <div class="hc-body" id="patchPreview">${loading()}</div>
         <div class="hc-foot"><a href="#/patch" id="patchMore">Lire toutes les notes du patch</a></div>
       </section>
     </div>
 
-    <div class="home-strip">
-      <a class="feat feat-mu" href="#/matchups"><span class="feat-ic"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M4 4h4l9 9-2 2-9-9ZM20 4h-4l-5 5 2 2 5-5Zm-14 11 3 3-2 2-3-3Zm12 0 2 2-3 3-2-2Z" fill="currentColor"/></svg></span><span><b>Matchups <span class="nav-new">NEW</span></b><small>Chaque face-à-face analysé, avec les parties des meilleurs joueurs.</small></span></a>
-      <a class="feat feat-otp" href="#/otp"><span class="feat-ic"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M12 2 9 8l-6 .8 4.4 4.2L6.3 19 12 16l5.7 3-1.1-6 4.4-4.2L15 8Z" fill="currentColor"/></svg></span><span><b>Classement OTP</b><small>Les spécialistes d’un seul champion, région par région.</small></span></a>
-      <button type="button" class="feat feat-live" id="liveFeat"><span class="feat-ic"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="currentColor"/><path d="M5.6 5.6a9 9 0 0 0 0 12.8M18.4 5.6a9 9 0 0 1 0 12.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span><span><b>Partie en direct</b><small>Rôles, duos, mains, pros et streamers des 10 joueurs.</small></span></button>
-      <div class="feat feat-free"><span class="feat-ic"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm-1 5h2v2.1c1.6.3 2.8 1.3 3 2.9h-2c-.2-.7-.9-1.1-2-1.1-1.2 0-1.9.5-1.9 1.1 0 .7.6 1 2.4 1.4 2.3.5 3.6 1.4 3.6 3.2 0 1.6-1.2 2.7-3.1 3V21h-2v-2.4c-1.9-.3-3.1-1.4-3.3-3.1h2c.2.8 1 1.3 2.3 1.3 1.3 0 2.1-.5 2.1-1.2 0-.8-.7-1.1-2.5-1.5-2.2-.5-3.5-1.3-3.5-3.1 0-1.5 1.2-2.6 2.9-2.9Z" fill="currentColor"/></svg></span><span><b>100 % gratuit</b><small>Pas de compte, pas d’abonnement. Tout est inclus.</small></span></div>
+    <div class="home-strip two">
+      <a class="feat feat-mu" href="#/matchups">${duelArt()}<span><b>Matchups <span class="nav-new">NEW</span></b><small>Chaque face-à-face analysé, avec les parties des meilleurs joueurs.</small></span></a>
+      <a class="feat feat-otp" href="#/otp"><span class="feat-img"><img src="/brand/otp.png" alt=""></span><span><b>Classement OTP</b><small>Les spécialistes d’un seul champion, région par région.</small></span></a>
     </div>
 
     <div class="home-grid">
@@ -103,7 +101,6 @@ export async function render(el, _params, ctx) {
     })
   );
 
-  el.querySelector('#liveFeat').addEventListener('click', () => input.focus());
   drawPeople(el);
   loadRegionPanels(el, ctx);
   loadLadder(el, ctx, LADDER_TABS[0][0]);
@@ -114,6 +111,17 @@ export async function render(el, _params, ctx) {
     })
   );
   loadPatch(el, ctx);
+}
+
+// Deux champions tirés au hasard, fusionnés autour d'une épée.
+export const SWORD = '<svg class="sword" viewBox="0 0 64 64" aria-hidden="true"><path fill="#c9cdf0" d="M17.8 37.8 50 5.5 60 4 22 42Z"/><path fill="#99a0d8" d="M22 42 60 4l-1.5 10-32.3 32.2Z"/><rect x="17.5" y="44" width="7" height="14" fill="#e8730c" transform="rotate(45 21 43)"/><rect x="21" y="44" width="3.5" height="14" fill="#c4560a" transform="rotate(45 21 43)"/><rect x="10" y="40" width="22" height="6" rx="3" fill="#f6b51e" transform="rotate(45 21 43)"/><rect x="2.5" y="51.5" width="14" height="6" rx="3" fill="#f6b51e" transform="rotate(45 9.5 54.5)"/></svg>';
+export function duelArt(a, b) {
+  const all = Object.values(S.st.champions);
+  const pick = () => all[Math.floor(Math.random() * all.length)];
+  const x = a || pick();
+  let y = b || pick();
+  while (!b && y.key === x.key) y = pick();
+  return `<span class="duel" aria-hidden="true">${champImg(x.key, 40)}${champImg(y.key, 40)}${SWORD}</span>`;
 }
 
 /* ---------- Favoris et récents ---------- */
@@ -179,7 +187,7 @@ function drawTierPreview(el, meta) {
           .map(
             (r) => `<a class="hc-row" href="${champHref(r.champ, role)}">
               <span class="hc-who">${champImg(r.id, 38)}<span><b>${esc(r.champ.name)}</b><small>${num(r.c.g)} parties</small></span></span>
-              <span class="tier tier-${r.tier}">${r.tier}</span>
+              <span class="tier tier-${r.tier.replace('+', 'P')}">${r.tier}</span>
               <span class="hc-num">${wrBadge(r.c.w, r.c.g, { d: 1 })}</span>
               <span class="hc-num">${pct(r.pr, 1, 1)}</span>
             </a>`

@@ -13,7 +13,7 @@
   border-radius: 22px;
   border: 1px solid var(--line);
   background:
-    radial-gradient(60% 120% at 0% 0%, rgba(255, 111, 174, 0.14), transparent 60%),
+    radial-gradient(60% 120% at 0% 0%, rgba(255, 46, 77, 0.14), transparent 60%),
     radial-gradient(50% 120% at 100% 100%, rgba(74, 168, 255, 0.12), transparent 60%),
     var(--card);
   box-shadow: var(--shadow-sm);
@@ -28,7 +28,7 @@
 }
 .avatar .ic {
   border-radius: 22px;
-  box-shadow: 0 0 0 3px var(--surface), 0 0 0 5px rgba(255, 111, 174, 0.55), var(--shadow-sm);
+  box-shadow: 0 0 0 3px var(--surface), 0 0 0 5px rgba(255, 46, 77, 0.55), var(--shadow-sm);
 }
 :root[data-theme='light'] .avatar .ic {
   box-shadow: 0 0 0 3px #fff, 0 0 0 5px #0b0b12;
@@ -275,7 +275,7 @@
 }
 .roles .col i {
   width: 100%;
-  background: linear-gradient(180deg, #ff6fae, #8b7cff);
+  background: linear-gradient(180deg, #ff2e4d, #2f7bff);
   border-radius: 5px;
   transform-origin: bottom center;
   animation: grow-y 0.8s var(--ease) both;
@@ -1805,7 +1805,7 @@
   font-size: 9.5px;
 }
 .lc.me {
-  box-shadow: 0 0 0 2px var(--accent), 0 0 28px -4px rgba(255, 111, 174, 0.45);
+  box-shadow: 0 0 0 2px var(--accent), 0 0 28px -4px rgba(255, 46, 77, 0.45);
 }
 :root[data-theme='light'] .lc.me {
   box-shadow: 0 0 0 2px #0b0b12;
@@ -1879,4 +1879,345 @@
   font-weight: 800;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+/* =====================================================================
+   Profil v9 : résumé, graphique, rank IA, jours, champions mis en avant
+   ===================================================================== */
+.summary {
+  grid-template-columns: auto minmax(150px, 1.2fr) repeat(3, minmax(90px, 0.8fr));
+  gap: 18px;
+}
+@media (max-width: 900px) {
+  .summary {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+.sum-col {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+}
+.sum-col.center {
+  justify-items: center;
+  text-align: center;
+}
+.sum-label {
+  font-size: 11.5px;
+  font-weight: 750;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.sum-big {
+  font-family: var(--font-display);
+  font-size: 30px;
+  line-height: 1.05;
+  background: linear-gradient(180deg, #fff, #b9b2ff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.sum-big small {
+  font-size: 15px;
+}
+:root[data-theme='light'] .sum-big {
+  background: none;
+  color: #0b0b12;
+}
+.sum-champs > div {
+  gap: 10px;
+}
+.sum-champs .grow {
+  display: grid;
+}
+.gauge {
+  --g1: #3ee0a1;
+  --g2: #4cc9ff;
+  position: relative;
+  display: grid;
+  justify-items: center;
+  width: 128px;
+}
+:root[data-theme='light'] .gauge {
+  --g1: #0d8a5c;
+  --g2: #0d8a5c;
+}
+.gauge svg {
+  width: 128px;
+  height: 74px;
+}
+.gauge-fill {
+  animation: ring-in 1s var(--ease) both;
+}
+.gauge b {
+  position: absolute;
+  top: 34px;
+  font-family: var(--font-display);
+  font-size: 23px;
+}
+.gauge small {
+  margin-top: -14px;
+  font-size: 10.5px;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+}
+.gauge-wl {
+  font-size: 12.5px;
+  font-weight: 700;
+}
+.score-lg {
+  width: 62px;
+  height: 62px;
+}
+.score-lg b {
+  font-size: 21px;
+}
+.filters .rolebar {
+  margin-right: 4px;
+}
+
+/* Graphique */
+.chart-panel {
+  --c1: #8fb4ff;
+}
+:root[data-theme='light'] .chart-panel {
+  --c1: #0b0b12;
+}
+.chart {
+  height: 130px;
+  margin: 0 18px;
+}
+.chart svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.chart .b-w {
+  fill: color-mix(in srgb, var(--win) 70%, transparent);
+}
+.chart .b-l {
+  fill: color-mix(in srgb, var(--loss) 65%, transparent);
+}
+.chart .mid {
+  stroke: var(--line-strong);
+  stroke-dasharray: 3 4;
+  vector-effect: non-scaling-stroke;
+}
+.chart-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 18px 16px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.chart-foot b {
+  color: var(--text);
+}
+
+/* Rank IA */
+.ia {
+  padding: 4px 18px 18px;
+}
+.ia-ranks {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+.ia-ranks > div {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 10px 6px;
+  border-radius: 14px;
+  background: var(--glass);
+  border: 1px solid var(--line-soft);
+}
+.ia-ranks small {
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--faint);
+}
+.ia-ranks b {
+  font-family: var(--font-display);
+  font-size: 15px;
+}
+.ia-arrow {
+  font-size: 20px;
+  color: var(--muted);
+}
+.ia.up .ia-arrow,
+.ia.up .ia-ranks > div:last-child b {
+  color: var(--win);
+}
+.ia.down .ia-arrow,
+.ia.down .ia-ranks > div:last-child b {
+  color: var(--loss);
+}
+.ia.up .ia-ranks > div:last-child {
+  border-color: color-mix(in srgb, var(--win) 45%, transparent);
+  box-shadow: 0 0 22px -8px color-mix(in srgb, var(--win) 70%, transparent);
+}
+.ia.down .ia-ranks > div:last-child {
+  border-color: color-mix(in srgb, var(--loss) 45%, transparent);
+}
+.ia-verdict {
+  margin: 12px 0 10px;
+  font-size: 14px;
+  text-align: center;
+}
+.ia-meter {
+  position: relative;
+  height: 8px;
+  border-radius: 8px;
+  background: linear-gradient(90deg, var(--wr0), var(--wr1) 30%, var(--wr2) 50%, var(--wr3) 70%, var(--wr5));
+  margin-bottom: 12px;
+}
+.ia-meter i {
+  position: absolute;
+  top: -4px;
+  width: 16px;
+  height: 16px;
+  margin-left: -8px;
+  border-radius: 50%;
+  background: #fff;
+  border: 3px solid var(--surface);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+.ia-facts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+.ia-facts li {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+}
+
+/* Historique groupé par jour */
+.day {
+  display: grid;
+  gap: 8px;
+}
+.day + .day {
+  margin-top: 10px;
+}
+.day-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 2px 2px;
+  font-size: 13px;
+}
+.day-head b {
+  font-family: var(--font-display);
+  font-size: 16px;
+  text-transform: capitalize;
+}
+.day-score {
+  padding: 3px 10px;
+  border-radius: 8px;
+  background: var(--glass);
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+.day-score b {
+  font-size: 13px;
+  color: var(--text);
+}
+.day-w,
+.day-l {
+  padding: 3px 10px;
+  border-radius: 8px;
+  font-weight: 750;
+}
+.day-w {
+  color: var(--win);
+  background: color-mix(in srgb, var(--win) 14%, transparent);
+}
+.day-l {
+  color: var(--loss);
+  background: color-mix(in srgb, var(--loss) 14%, transparent);
+}
+
+/* Champions mis en avant */
+.ch-highlights {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.chh {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 16px 16px 18px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  text-decoration: none;
+  overflow: hidden;
+  transition: transform 0.2s var(--ease), border-color 0.2s;
+}
+.chh:hover {
+  transform: translateY(-3px);
+  border-color: var(--line-strong);
+}
+.chh::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--k, var(--grad));
+}
+.chh-main { --k: #ff2e4d; }
+.chh-score { --k: #2f7bff; }
+.chh-wr { --k: #3ee0a1; }
+.chh-kda { --k: #4cc9ff; }
+.chh-hot { --k: #ff9a5c; }
+:root[data-theme='light'] .chh::before {
+  background: #0b0b12;
+}
+.chh > span {
+  display: grid;
+  min-width: 0;
+}
+.chh small {
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--k);
+}
+:root[data-theme='light'] .chh small {
+  color: #0b0b12;
+}
+.chh b {
+  font-family: var(--font-display);
+  font-size: 25px;
+  line-height: 1.15;
+}
+.chh span span {
+  font-size: 12.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chh .ic {
+  border-radius: 14px;
+  box-shadow: 0 10px 22px -12px rgba(0, 0, 0, 0.9);
 }

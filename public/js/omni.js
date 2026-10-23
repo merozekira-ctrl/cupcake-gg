@@ -65,7 +65,7 @@ function optionHtml(r, id, active) {
   const region = S.cfg.platforms[r.p]?.label || r.p;
   return `<li role="option" id="${id}" class="omni-opt${active ? ' is-active' : ''}" aria-selected="${active}">
     ${r.icon != null ? profileImg(r.icon, 32, true) : '<span class="omni-person" aria-hidden="true"></span>'}
-    <span class="omni-main"><b>${esc(r.name)}<span class="muted">#${esc(r.tag)}</span></b><small>${r.pro ? proBadge(r.pro) + ' ' : ''}${esc(r.note)}</small></span>
+    <span class="omni-main"><b>${esc(r.name)}<span class="muted">#${esc(r.tag)}</span></b><small>${r.pro ? proBadge(r.pro, { link: false }) + ' ' : ''}${esc(r.note)}</small></span>
     <span class="omni-kind">${esc(region)}</span>
   </li>`;
 }

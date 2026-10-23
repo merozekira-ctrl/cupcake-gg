@@ -1,7 +1,7 @@
 // Ligne de partie, détail (tableau, comparaison, chronologie).
 import {
   S, api, esc, num, dec, pct, kNum, kdaRatio, kdaText, ago, fullDate, clock, queueName, isArena,
-  champImg, champOf, itemImg, spellImg, runeImg, playerHref, scoreMatch, loading, errorState, ROLES,
+  champImg, champOf, itemImg, spellImg, runeImg, playerHref, scoreMatch, loading, errorState, ROLES, crest, rankText, proBadge,
 } from '../core.js';
 
 const MATCHES = new Map();
@@ -43,9 +43,12 @@ export function matchCard(m, puuid, platform) {
   const tk = groupKills(m, me);
   const ratio = kdaRatio(me.k, me.d, me.a);
   const champ = champOf(me.champ);
+  // Partie légendaire : MVP et score de 90 ou plus.
+  const legend = !m.remake && res.cls === 'win' && idx === sc.mvp && sc.scores[idx] * 10 >= 90;
 
   const badges = [];
-  if (idx === sc.mvp) badges.push('<span class="badge gold" title="Meilleur score de l’équipe gagnante">MVP</span>');
+  if (legend) badges.push(`<span class="badge gold" title="MVP avec un score de ${Math.round(sc.scores[idx] * 10)} sur 100">MVP</span>`);
+  else if (idx === sc.mvp) badges.push('<span class="badge gold" title="Meilleur score de l’équipe gagnante">MVP</span>');
   else if (idx === sc.ace) badges.push('<span class="badge ace" title="Meilleur score de l’équipe perdante">ACE</span>');
   const mk = multiBadge(me);
   if (mk) badges.push(`<span class="badge multi">${mk}</span>`);
@@ -54,7 +57,7 @@ export function matchCard(m, puuid, platform) {
   let teams = '';
   if (!isArena(m.q)) {
     const li = (p) =>
-      `<li class="${p.puuid === puuid ? 'me' : ''}">${champImg(p.champ, 16)}${playerLink(platform, p)}</li>`;
+      `<li class="${p.puuid === puuid ? 'me' : ''}${p.pro && !p.pro.guess ? ' pro' : ''}">${champImg(p.champ, 16)}${playerLink(platform, p)}</li>`;
     teams = `<div class="m-teams" aria-label="Joueurs de la partie">
       <ul>${m.parts.filter((p) => p.team === 100).map(li).join('')}</ul>
       <ul>${m.parts.filter((p) => p.team === 200).map(li).join('')}</ul>
@@ -67,7 +70,7 @@ export function matchCard(m, puuid, platform) {
   }
 
   return `<div class="match-wrap" data-id="${esc(m.id)}">
-    <article class="match ${res.cls}" aria-label="${esc(res.text)} avec ${esc(champ?.name || 'champion')}, ${me.k} sur ${me.d} sur ${me.a}">
+    <article class="match ${res.cls}${legend ? ' is-legendary' : ''}" aria-label="${esc(res.text)} avec ${esc(champ?.name || 'champion')}, ${me.k} sur ${me.d} sur ${me.a}">
       <div class="m-meta">
         <span class="m-queue">${esc(queueName(m.q))}</span>
         <span title="${esc(fullDate(m.start))}">${esc(ago(m.end))}</span>
@@ -138,7 +141,10 @@ function drawDetail(det, m, tab, { puuid, platform }) {
     .map(([id, label]) => `<button type="button" role="tab" data-dtab="${id}" aria-selected="${id === tab}">${label}</button>`)
     .join('')}</div><div class="d-body" role="tabpanel"></div>`;
   const body = det.querySelector('.d-body');
-  if (tab === 'table') body.innerHTML = tableView(m, puuid, platform);
+  if (tab === 'table') {
+    body.innerHTML = tableView(m, puuid, platform);
+    fillRanks(body, m, platform);
+  }
   else if (tab === 'charts') body.innerHTML = chartsView(m, puuid);
   else {
     body.innerHTML = loading('Chargement de la chronologie…');
@@ -164,32 +170,88 @@ function teamTotals(parts) {
   return parts.reduce((s, p) => ({ k: s.k + p.k, gold: s.gold + p.gold }), { k: 0, gold: 0 });
 }
 
+// Icônes des objectifs (dessin simple, une couleur).
+const OBJ_IC = {
+  tower: '<path d="M7 21h10l-1.5-9H17V5h-2v2h-2V5h-2v2H9V5H7v7h1.5Z"/>',
+  dragon: '<path d="M12 3c-1 2-3 3-5 3l1.5 3L5 11l3 1-1 4 3-2 2 5 2-5 3 2-1-4 3-1-3.5-2L17 6c-2 0-4-1-5-3Z"/>',
+  baron: '<path d="M12 3a7 7 0 0 0-7 7c0 3 1.6 4.6 3 5.6V20h2v-2h1v2h2v-2h1v2h2v-4.4c1.4-1 3-2.6 3-5.6a7 7 0 0 0-7-7Zm-3 9a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Zm6 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Z"/>',
+  grubs: '<path d="M6 14a4 4 0 0 1 4-4h1a3 3 0 1 1 3 4 4 4 0 0 1-8 0Zm11-7 2-2M15 6l1-3"/>',
+  herald: '<path d="M12 2 9 7H4l3 4-2 6 7-3 7 3-2-6 3-4h-5Zm0 7a2 2 0 1 1 0 4 2 2 0 0 1 0-4Z"/>',
+  atakhan: '<path d="M12 2 4 8v6l8 8 8-8V8Zm0 5 3 3-3 6-3-6Z"/>',
+};
+const OBJ_IMG = ['baron', 'dragon', 'herald', 'grubs', 'tower'];
+const objIc = (k) =>
+  OBJ_IMG.includes(k)
+    ? `<img class="obj-ic" src="/img/obj/${k}.png" alt="" height="18" decoding="async">`
+    : `<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true" fill="currentColor" stroke="currentColor" stroke-width="0">${OBJ_IC[k]}</svg>`;
+
+const scoreColor = (v) => (v >= 80 ? 'var(--sc-s)' : v >= 62 ? 'var(--sc-a)' : v >= 42 ? 'var(--sc-b)' : 'var(--sc-c)');
+
 function playerRow(m, p, i, ctx) {
   const { puuid, platform, maxDmg, sc } = ctx;
   const min = Math.max(1, m.dur / 60);
   const tk = groupKills(m, p);
-  const badge = i === sc.mvp ? '<span class="badge gold">MVP</span>' : i === sc.ace ? '<span class="badge ace">ACE</span>' : `<span class="muted">${ordinal(sc.rank[i])}</span>`;
-  return `<tr class="${p.puuid === puuid ? 'me' : ''}">
-    <td><div class="cell-player">
-      <div class="m-portrait">${champImg(p.champ, 32)}<span class="lvl">${p.lvl}</span></div>
-      <div class="mini-ic">${spellImg(p.s1, 18)}${runeImg(p.ks, 18)}${spellImg(p.s2, 18)}${runeImg(p.ss, 18, true)}</div>
-      <div class="pn">${playerLink(platform, p)}<small>${esc(ROLES[p.pos] || (isArena(m.q) ? `${ordinal(p.place || 0)} place` : ''))}</small></div>
-    </div></td>
-    <td class="num">${m.remake ? '–' : dec(sc.scores[i])}<br>${m.remake ? '' : badge}</td>
-    <td class="num"><b>${p.k}/${p.d}/${p.a}</b><br><span class="muted">${kdaText(kdaRatio(p.k, p.d, p.a))} KDA</span></td>
-    <td class="num">${pct(p.k + p.a, tk)}</td>
-    <td class="dmg-cell">${num(p.dmg)}<div class="bar ${p.team === 200 ? 't2' : 't1'}"><i style="width:${maxDmg ? (p.dmg / maxDmg) * 100 : 0}%"></i></div></td>
-    <td class="num">${kNum(p.gold)}</td>
-    <td class="num">${p.cs}<br><span class="muted">${dec(p.cs / min)}/min</span></td>
-    <td class="num">${p.vis}<br><span class="muted" title="Balises posées / détruites">${p.wp} / ${p.wk}</span></td>
-    <td><div class="items-row">${p.items.map((x) => itemImg(x, 22)).join('')}</div></td>
-  </tr>`;
+  const s100 = m.remake ? null : Math.round(sc.scores[i] * 10);
+  const place = m.remake
+    ? '<span class="sb-place">–</span>'
+    : i === sc.mvp
+      ? '<span class="sb-place mvp">MVP</span>'
+      : i === sc.ace
+        ? '<span class="sb-place ace">ACE</span>'
+        : `<span class="sb-place">${ordinal(sc.rank[i])}</span>`;
+  const sup = p.pos === 'UTILITY';
+  const items = p.items.slice(0, 7);
+  while (items.length < 7) items.push(0);
+  const it = (x) => (x ? itemImg(x, 22) : '<span class="sb-empty"></span>');
+  const pro = p.pro && !p.pro.guess ? ' is-pro' : '';
+  const sub = isArena(m.q) ? `<small>${ordinal(p.place || 0)} place</small>` : `<small class="sb-rank" data-rk="${esc(p.puuid || '')}"><span class="sb-sk"></span></small>`;
+  return `<div class="sb-row${p.puuid === puuid ? ' me' : ''}${p.win ? ' w' : ' l'}">
+    ${place}
+    <div class="sb-champ">${champImg(p.champ, 38)}<span class="lvl">${p.lvl}</span></div>
+    <div class="sb-name"><span class="sb-n${pro}">${playerLink(platform, p)}${p.pro ? proBadge(p.pro) : ''}</span>${sub}</div>
+    <div class="sb-sr">${spellImg(p.s1, 19)}${runeImg(p.ks, 19)}${spellImg(p.s2, 19)}${runeImg(p.ss, 19, true)}</div>
+    <div class="sb-items">${items.slice(0, 4).map(it).join('')}${items.slice(4).map(it).join('')}</div>
+    <div class="sb-kda"><b>${p.k} <i>/</i> <span class="d">${p.d}</span> <i>/</i> ${p.a}</b><small>${kdaText(kdaRatio(p.k, p.d, p.a))} KDA</small></div>
+    <div class="sb-stat"><b>${pct(p.k + p.a, tk)}</b><small>KP</small></div>
+    <div class="sb-stat">${sup ? `<b>${p.vis}</b><small>vision</small>` : `<b>${dec(p.cs / min, 1)}</b><small>CS/min</small>`}</div>
+    <div class="sb-dmg"><div class="sb-bar${p.dmg === maxDmg ? ' top' : ''}"><i style="width:${maxDmg ? ((p.dmg / maxDmg) * 100).toFixed(1) : 0}%"></i></div><small><b>${kNum(p.dmg)}</b> (${num(Math.round(p.dmg / min))}/m)</small></div>
+    <div class="sb-score">${s100 == null ? '<b class="muted">–</b>' : `<span class="score sb-ring" style="--p:${s100};--c:${scoreColor(s100)}" title="Score cupcake : ${s100} sur 100"><b style="color:${scoreColor(s100)}">${s100}</b></span>`}</div>
+  </div>`;
 }
 
-const tableHead = `<thead><tr>
-  <th scope="col">Joueur</th><th scope="col" class="num">Score</th><th scope="col" class="num">KDA</th>
-  <th scope="col" class="num">P/Kill</th><th scope="col">Dégâts</th><th scope="col" class="num">Or</th><th scope="col" class="num">CS</th>
-  <th scope="col" class="num">Vision</th><th scope="col">Objets</th></tr></thead>`;
+// Rang et LP de chaque joueur sous son nom (chargés après l'affichage).
+function fillRanks(root, m, platform) {
+  const apply = (rk) => {
+    root.querySelectorAll('[data-rk]').forEach((el) => {
+      const r = rk[el.dataset.rk];
+      if (!r) return;
+      if (!r.tier) {
+        el.innerHTML = '<span class="muted">Non classé</span>';
+        return;
+      }
+      const apex = ['MASTER', 'GRANDMASTER', 'CHALLENGER'].includes(r.tier);
+      el.innerHTML = `${crest(r, 'xs')}<span>${apex ? `${num(r.lp)} LP` : `${esc(rankText(r))} · ${num(r.lp)} LP`}</span>`;
+      el.title = `${rankText(r)} ${r.lp} LP${r.q === 'flex' ? ' (Flex)' : ''}`;
+      if (r.pro && !r.pro.guess) {
+        const row = el.closest('.sb-row');
+        const n = row?.querySelector('.sb-n');
+        if (n && !n.querySelector('.who')) {
+          n.classList.add('is-pro');
+          n.insertAdjacentHTML('beforeend', proBadge(r.pro));
+        }
+      }
+    });
+  };
+  if (m._rk) return apply(m._rk);
+  const ids = m.parts.map((p) => p.puuid).filter(Boolean);
+  if (!ids.length) return;
+  api(`/ranks/${platform}?ids=${ids.join(',')}`)
+    .then((rk) => {
+      m._rk = rk;
+      apply(rk);
+    })
+    .catch(() => root.querySelectorAll('[data-rk]').forEach((el) => (el.innerHTML = '')));
+}
 
 function tableView(m, puuid, platform) {
   const sc = scoreMatch(m);
@@ -197,9 +259,9 @@ function tableView(m, puuid, platform) {
   const ctx = { puuid, platform, maxDmg, sc };
   if (isArena(m.q)) {
     const order = m.parts.map((p, i) => [p, i]).sort((a, b) => (a[0].place || 99) - (b[0].place || 99));
-    return `<div class="scroll-x"><table class="table">${tableHead}<tbody>${order.map(([p, i]) => playerRow(m, p, i, ctx)).join('')}</tbody></table></div>`;
+    return `<div class="scroll-x"><div class="sb">${order.map(([p, i]) => playerRow(m, p, i, ctx)).join('')}</div></div>`;
   }
-  return [100, 200]
+  return `<div class="scroll-x"><div class="sb">${[100, 200]
     .map((teamId) => {
       const parts = m.parts.map((p, i) => [p, i]).filter(([p]) => p.team === teamId);
       if (!parts.length) return '';
@@ -209,25 +271,22 @@ function tableView(m, puuid, platform) {
       // Les objectifs absents des deux côtés (Atakhan, larves…) sont masqués.
       const seen = (k) => m.teams.some((t) => t[k] > 0);
       const objs = [
-        ['Éliminations', tot.k],
-        ['Or', kNum(tot.gold)],
-        ['Tours', T.tower || 0],
-        ['Dragons', T.dragon || 0],
-        ...(seen('grubs') ? [['Larves', T.grubs || 0]] : []),
-        ...(seen('herald') ? [['Héraut', T.herald || 0]] : []),
-        ['Barons', T.baron || 0],
-        ...(seen('atakhan') ? [['Atakhan', T.atakhan || 0]] : []),
+        ...(seen('grubs') ? [['grubs', 'Larves du Néant', T.grubs || 0]] : []),
+        ['dragon', 'Dragons', T.dragon || 0],
+        ...(seen('herald') ? [['herald', 'Héraut', T.herald || 0]] : []),
+        ['baron', 'Barons', T.baron || 0],
+        ...(seen('atakhan') ? [['atakhan', 'Atakhan', T.atakhan || 0]] : []),
+        ['tower', 'Tours', T.tower || 0],
       ];
-      return `<div class="team-block">
-        <div class="team-head">
-          <h4 class="${m.remake ? '' : win ? 't-win' : 't-loss'}">${m.remake ? 'Remake' : win ? 'Victoire' : 'Défaite'} <span class="muted">équipe ${teamId === 100 ? 'bleue' : 'rouge'}</span></h4>
-          <div class="objs">${objs.map(([l, v]) => `<span>${l} <b>${v}</b></span>`).join('')}</div>
-          ${T.bans?.length ? `<div class="bans">Bannis ${T.bans.map((c) => champImg(c, 20)).join('')}</div>` : ''}
+      return `<div class="sb-head ${teamId === 100 ? 'blue' : 'red'}">
+          <h4 class="${m.remake ? '' : win ? 't-win' : 't-loss'}">${m.remake ? 'Remake' : win ? 'Victoire' : 'Défaite'} <span>(côté ${teamId === 100 ? 'bleu' : 'rouge'})</span></h4>
+          <span class="sb-tot" title="Éliminations · or de l’équipe"><b>${tot.k}</b> kills · <b>${kNum(tot.gold)}</b> or</span>
+          <div class="sb-objs">${objs.map(([k, l, v]) => `<span title="${l}">${objIc(k)}<b>${v}</b></span>`).join('')}</div>
+          ${T.bans?.length ? `<div class="bans" title="Champions bannis">${T.bans.map((c) => champImg(c, 20)).join('')}</div>` : ''}
         </div>
-        <div class="scroll-x"><table class="table">${tableHead}<tbody>${parts.map(([p, i]) => playerRow(m, p, i, ctx)).join('')}</tbody></table></div>
-      </div>`;
+        ${parts.map(([p, i]) => playerRow(m, p, i, ctx)).join('')}`;
     })
-    .join('');
+    .join('')}</div></div>`;
 }
 
 /* ---------- Comparaison ---------- */

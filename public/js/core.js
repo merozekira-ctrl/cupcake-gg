@@ -231,7 +231,14 @@ export function proBadge(pro, { link = true } = {}) {
     const title = pro.twitch ? `Chaîne Twitch : ${pro.twitch}${pro.guess ? ' (déduite du pseudo)' : ''}` : 'Streamer';
     return `<${t ? 'a' : 'span'} class="who who-stream"${t} title="${esc(title)}">${TWITCH}Streamer</${t ? 'a' : 'span'}>`;
   }
-  return `<span class="who who-pro" title="${esc(pro.label || 'Joueur professionnel')}${pro.team ? ' · ' + esc(pro.team) : ''}">${pro.team ? `<b>${esc(pro.team)}</b>` : LAUREL}Pro</span>`;
+  // Badge pro : lien vers la fiche wiki du joueur (palmarès, équipe, infos).
+  const page = String(pro.page || pro.label || '').trim();
+  const href = link && page && S.cfg?.proWiki ? `${S.cfg.proWiki}${encodeURIComponent(page.replace(/\s+/g, '_'))}` : '';
+  const title = `${pro.label || 'Joueur professionnel'}${pro.team ? ' · ' + pro.team : ''}${href ? ' · voir sa fiche joueur' : ''}`;
+  const inner = `${pro.team ? `<b>${esc(pro.team)}</b>` : LAUREL}Pro`;
+  return href
+    ? `<a class="who who-pro" href="${esc(href)}" target="_blank" rel="noopener noreferrer" title="${esc(title)}">${inner}</a>`
+    : `<span class="who who-pro" title="${esc(title)}">${inner}</span>`;
 }
 export const regionBadge = (p) => `<span class="rg rg-${esc(p)}">${esc(S.cfg.platforms[p]?.label || p)}</span>`;
 
@@ -382,14 +389,21 @@ export function scoreMatch(m) {
       tank: (p.taken + p.mitig) / min,
     };
   });
+  // Référence = meilleur de la partie, mais jamais sous un plancher absolu :
+  // dans une partie où tout le monde joue mal, personne n'atteint le maximum.
+  const FLOOR = { kda: 5, kp: 0.65, dmg: 900, share: 0.3, gold: 480, cs: 8, vis: 1.6, obj: 400, tank: 1500 };
   const max = {};
-  for (const k in W) max[k] = Math.max(1e-9, ...metrics.map((x) => x[k]));
+  for (const k in W) max[k] = Math.max(FLOOR[k] || 1e-9, ...metrics.map((x) => x[k]));
   const scores = metrics.map((x, i) => {
-    let s = 0;
-    for (const k in W) s += W[k] * Math.min(1, x[k] / max[k]);
+    let rel = 0;
+    for (const k in W) rel += W[k] * Math.min(1, x[k] / max[k]);
     const p = m.parts[i];
-    const bonus = arena ? (p.place && p.place <= 2 ? 0.4 : 0) : p.win ? 0.5 : 0;
-    return Math.max(0, Math.min(10, s * 12.5 + bonus));
+    // Barème exigeant : 0,25 de « relatif » = 0, 0,90 = 100. Une partie moyenne tourne autour de 40-50.
+    let v = (rel - 0.25) / 0.65;
+    // Morts : au-delà de 5, chaque mort coûte 3 points (15 max).
+    if (!arena) v -= Math.min(0.15, Math.max(0, p.d - 5) * 0.03);
+    v += arena ? (p.place && p.place <= 2 ? 0.04 : 0) : p.win ? 0.04 : 0;
+    return Math.max(0, Math.min(10, v * 10));
   });
   const order = scores.map((s, i) => i).sort((a, b) => scores[b] - scores[a]);
   const rank = [];
@@ -404,4 +418,96 @@ export function scoreMatch(m) {
   }
   m._score = { scores, rank, mvp, ace };
   return m._score;
+}
+
+// Niveau d'un joueur sur 100 (score cupcake) : un palier tous les 10 %.
+const LEVELS = ['Déchu', 'Démon', 'Diable', 'Diablotin', 'Cornu', 'Humain', 'Valeureux', 'Béni', 'Séraphin', 'Archange', 'GOAT'];
+export function levelOf(v) {
+  const x = Math.max(0, Math.min(100, Math.round(v)));
+  return { v: x, step: levelStep(x), label: LEVELS[levelStep(x)] };
+}
+export function levelChip(v, { pctSign = true } = {}) {
+  const L = levelOf(v);
+  return `<span class="lv lv-${L.step}" title="Niveau selon les stats : ${L.v} % (${L.label})">${pctSign ? `<b>${L.v} %</b>` : ''}${L.label}</span>`;
+}
+const LV_COLOR = ['#ff5468', '#ff5468', '#ff9a5c', '#ff9a5c', 'var(--wr2)', 'var(--wr2)', 'var(--wr3)', 'var(--wr3)', 'var(--wr5)', 'var(--wr5)', 'var(--wr5)'];
+// Cercle de niveau : pourcentage au centre, palier en dessous (ou en infobulle si compact).
+export function levelRing(v, { size = 'md', label = true, avatar = false } = {}) {
+  const L = levelOf(v);
+  if (avatar) {
+    const px = size === 'lg' ? 64 : 34;
+    return `<span class="lvr lvr-${size} lvr-av${L.step === 10 ? ' goat' : ''}" title="${L.v} % · ${L.label}"><span class="score" style="--p:${L.v};--c:${LV_COLOR[L.step]}">${levelAvatar(L.step, px)}</span><span class="lvr-txt"><b>${L.v} %</b>${label ? `<small class="lv lv-${L.step}">${L.label}</small>` : ''}</span></span>`;
+  }
+  return `<span class="lvr lvr-${size}${L.step === 10 ? ' goat' : ''}" title="${L.v} % · ${L.label}"><span class="score" style="--p:${L.v};--c:${LV_COLOR[L.step]}"><b>${L.v}</b></span>${label ? `<small class="lv lv-${L.step}">${L.label}</small>` : ''}</span>`;
+}
+
+// Avatar du niveau : démon à 0 %, démon de moins en moins menaçant, humain cornu (40 %),
+// humain (50 %), puis de plus en plus angélique jusqu'à l'ange ultime (100 %).
+const AV = [
+  // [fond haut, fond bas, peau, cornes (0-1), yeux, ailes (0-1), auréole (0-2), cheveux]
+  ['#3a0610', '#12030a', '#b3202f', 1.0, 'demon', 0, 0, ''],
+  ['#3d0914', '#14040c', '#c0303c', 0.85, 'demon', 0, 0, ''],
+  ['#3a0c22', '#140512', '#c4434f', 0.7, 'demon', 0, 0, ''],
+  ['#34102e', '#130718', '#c95c6c', 0.55, 'imp', 0, 0, '#3a1a1a'],
+  ['#2a1530', '#100a1a', '#e7b08f', 0.35, 'human', 0, 0, '#4a2a1c'],
+  ['#1b2236', '#0b0f1c', '#efc19d', 0, 'human', 0, 0, '#5a3a24'],
+  ['#1b2a40', '#0b121e', '#f2c9a6', 0, 'human', 0, 0.5, '#7a5530'],
+  ['#1d3350', '#0c1626', '#f5d0b0', 0, 'calm', 0.35, 1, '#a07a40'],
+  ['#21406a', '#0d1a30', '#f8d8bb', 0, 'calm', 0.6, 1, '#d7b25a'],
+  ['#2a4f84', '#0f1f3a', '#fbe1c6', 0, 'calm', 0.85, 1.5, '#f0cf6a'],
+  ['#3b5fa0', '#122648', '#fff0dc', 0, 'calm', 1.0, 2, '#ffe28a'],
+];
+export function levelStep(v) {
+  const x = Math.max(0, Math.min(100, v));
+  return x >= 95 ? 10 : Math.floor(x / 10);
+}
+export function levelAvatar(step, size = 48) {
+  const [c1, c2, skin, horn, eyes, wing, halo, hair] = AV[Math.max(0, Math.min(10, step))];
+  const id = `lva${step}`;
+  const BAT = step <= 1
+    ? `<g fill="#1a0306" stroke="#ff3b3b" stroke-width="0.7" opacity="${step === 0 ? 1 : 0.75}"><path d="M22 42 L4 26 L9 36 L2 38 L10 42 L6 48 L18 46Z"/><path d="M42 42 L60 26 L55 36 L62 38 L54 42 L58 48 L46 46Z"/></g>`
+    : '';
+  const W = wing
+    ? `<g fill="#fff" opacity="${0.55 + wing * 0.4}">
+        <path d="M24 40 C${14 - wing * 8} ${36 - wing * 6} ${6 - wing * 4} ${24 - wing * 6} ${10 - wing * 6} ${14 - wing * 4} C14 22 20 30 26 34Z"/>
+        <path d="M40 40 C${50 + wing * 8} ${36 - wing * 6} ${58 + wing * 4} ${24 - wing * 6} ${54 + wing * 6} ${14 - wing * 4} C50 22 44 30 38 34Z"/>
+      </g>`
+    : '';
+  const H = horn
+    ? `<g fill="${step <= 2 ? '#1c0306' : '#efe3cf'}" stroke="${step <= 2 ? '#ff4d4d' : '#b8a888'}" stroke-width="${step <= 2 ? 0.8 : 0.6}">
+        <path d="M${24 - horn * 2} ${24} C${20 - horn * 8} ${18 - horn * 6} ${18 - horn * 6} ${10 - horn * 6} ${22 - horn * 2} ${8 - horn * 4} C${23} ${15 - horn * 2} ${26} ${19} ${28} ${21}Z"/>
+        <path d="M${40 + horn * 2} ${24} C${44 + horn * 8} ${18 - horn * 6} ${46 + horn * 6} ${10 - horn * 6} ${42 + horn * 2} ${8 - horn * 4} C${41} ${15 - horn * 2} ${38} ${19} ${36} ${21}Z"/>
+      </g>`
+    : '';
+  const HA = halo
+    ? `<ellipse cx="32" cy="${12}" rx="${9 + halo * 1.5}" ry="${2.6 + halo * 0.4}" fill="none" stroke="#ffd96a" stroke-width="${1.6 + halo * 0.5}" opacity="${0.55 + halo * 0.2}"${halo >= 2 ? ' filter="url(#g' + id + ')"' : ''}/>`
+    : '';
+  const EY = {
+    demon: `<path d="M24 31 l6 2 -6 1Z M40 31 l-6 2 6 1Z" fill="#ffd23f"/><circle cx="32" cy="34" r="0" />`,
+    imp: `<path d="M24.5 31.5 q3 -1.5 5.5 1 M34 32.5 q2.5 -2.5 5.5 -1" stroke="#2a0a0a" stroke-width="1.6" fill="none" stroke-linecap="round"/><circle cx="27" cy="33.4" r="1.4" fill="#ffd23f"/><circle cx="37" cy="33.4" r="1.4" fill="#ffd23f"/>`,
+    human: `<circle cx="27" cy="33" r="1.7" fill="#2a1a14"/><circle cx="37" cy="33" r="1.7" fill="#2a1a14"/>`,
+    calm: `<path d="M24.5 33 q2.5 2 5 0 M34.5 33 q2.5 2 5 0" stroke="#5a3a24" stroke-width="1.4" fill="none" stroke-linecap="round"/>`,
+  }[eyes];
+  const MO =
+    eyes === 'demon'
+      ? `<path d="M25 40 q7 5 14 0" stroke="#3a0508" stroke-width="1.6" fill="#3a0508"/><path d="M27.5 40.8 l1 2.4 1-2 M34.5 41 l1 2.2 1-2.4" fill="#fff"/>`
+      : eyes === 'imp'
+        ? `<path d="M26 40 q6 3.5 12 -1" stroke="#3a0a0a" stroke-width="1.6" fill="none" stroke-linecap="round"/>`
+        : `<path d="M27.5 40 q4.5 3 9 0" stroke="#7a3a2a" stroke-width="1.5" fill="none" stroke-linecap="round"/>`;
+  const HR = hair ? `<path d="M17.5 32 C16 20 24 15 32 15 C40 15 48 20 46.5 32 C45 25 40 22 32 22.5 C25 22 20 25 17.5 32Z" fill="${hair}"/>` : '';
+  const BODY = `<path d="M14 64 C16 52 24 48 32 48 C40 48 48 52 50 64Z" fill="${step <= 3 ? '#2a0b12' : step >= 7 ? '#f3f0ff' : '#33415c'}"/>`;
+  const glow = step >= 9 ? `<circle cx="32" cy="32" r="30" fill="url(#r${id})"/>` : step <= 1 ? `<circle cx="32" cy="34" r="24" fill="url(#d${id})"/>` : '';
+  return `<svg class="lv-av" viewBox="0 0 64 64" width="${size}" height="${size}" aria-hidden="true">
+    <defs>
+      <linearGradient id="b${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${c1}"/><stop offset="1" stop-color="${c2}"/></linearGradient>
+      <radialGradient id="r${id}"><stop offset="0" stop-color="#fff6c8" stop-opacity=".55"/><stop offset="1" stop-color="#fff6c8" stop-opacity="0"/></radialGradient>
+      <radialGradient id="d${id}"><stop offset=".55" stop-color="#ff2a2a" stop-opacity=".0"/><stop offset="1" stop-color="#ff2a2a" stop-opacity=".45"/></radialGradient>
+      <filter id="g${id}"><feGaussianBlur stdDeviation="1.2"/></filter>
+      <clipPath id="c${id}"><circle cx="32" cy="32" r="32"/></clipPath>
+    </defs>
+    <g clip-path="url(#c${id})">
+      <rect width="64" height="64" fill="url(#b${id})"/>${glow}${BAT}${W}${BODY}
+      <circle cx="32" cy="33" r="14.5" fill="${skin}"/>${HR}${H}${EY}${MO}${HA}
+    </g>
+  </svg>`;
 }

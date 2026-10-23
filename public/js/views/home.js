@@ -74,7 +74,7 @@ export async function render(el, _params, ctx) {
       <a class="feat feat-otp" href="#/otp"><span class="feat-img"><img src="/brand/otp.png" alt=""></span><span><b>Classement OTP</b><small>Les spécialistes d’un seul champion, région par région.</small></span></a>
     </div>
 
-    <div class="home-grid">
+    <div class="home-grid home-duo">
       <section class="panel" aria-labelledby="h-fav">
         <div class="panel-title"><h2 id="h-fav">Favoris</h2></div>
         <div id="favs"></div>
@@ -82,10 +82,6 @@ export async function render(el, _params, ctx) {
       <section class="panel" aria-labelledby="h-rec">
         <div class="panel-title"><h2 id="h-rec">Recherches récentes</h2></div>
         <div id="recents"></div>
-      </section>
-      <section class="panel home-rot" aria-labelledby="h-rot">
-        <div class="panel-title"><h2 id="h-rot">Rotation gratuite</h2><span class="muted small" id="rotRegion"></span></div>
-        <div id="rot">${loading()}</div>
       </section>
     </div>`;
 
@@ -320,8 +316,8 @@ async function loadPatch(el, ctx) {
 async function loadRegionPanels(el, ctx) {
   const p = S.platform;
   const label = S.cfg.platforms[p].label;
-  el.querySelector('#rotRegion').textContent = label;
-  const rot = el.querySelector('#rot');
+  // Rotation gratuite retirée de l'accueil : élément détaché pour garder le code de chargement inoffensif.
+  const rot = el.querySelector('#rot') || document.createElement('div');
   const status = el.querySelector('#status');
   const tier = el.querySelector('#tierPreview');
   if (!S.cfg.hasKey) {

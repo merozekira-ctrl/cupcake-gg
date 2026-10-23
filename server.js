@@ -3040,6 +3040,37 @@ const noDemo = () => {
   if (DEMO_ON) throw new ApiError(403, 'Modification désactivée sur la version de démonstration.');
 };
 route('POST', /^\/api\/pros$/, (m, q, body) => (noDemo(), addPro(body)));
+
+/* ---------- Ajout de parties protégé par mot de passe (bouton de l'accueil) ---------- */
+// Le mot de passe n'existe que côté serveur : variable ADMIN_PASSWORD (à définir sur l'hébergeur).
+// 5 essais ratés par adresse IP bloquent 15 minutes. Fonctionne aussi en version de démonstration.
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'riot123';
+const adminFails = new Map();
+function checkAdmin(req, pass) {
+  const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+  const f = adminFails.get(ip);
+  if (f && f.n >= 5 && Date.now() - f.t < 15 * 60e3) throw new ApiError(429, 'Trop d’essais. Réessaie dans 15 minutes.');
+  const a = crypto.createHash('sha256').update(String(pass || '')).digest();
+  const b = crypto.createHash('sha256').update(ADMIN_PASSWORD).digest();
+  if (!crypto.timingSafeEqual(a, b)) {
+    const e = f && Date.now() - f.t < 15 * 60e3 ? f : { n: 0, t: Date.now() };
+    e.n++;
+    e.t = Date.now();
+    adminFails.set(ip, e);
+    throw new ApiError(403, 'Mot de passe incorrect.');
+  }
+  adminFails.delete(ip);
+}
+route('POST', new RegExp(`^/api/admin/add-games/${P}$`), (m, q, body, req) => {
+  checkAdmin(req, body?.password);
+  if (!KEY) throw new ApiError(500, 'Aucune clé API Riot sur le serveur.');
+  const p = plat(m[1]);
+  const mk = metaKey(p, 'sr');
+  if (metaJobs[mk]?.running) throw new ApiError(409, 'Une analyse est déjà en cours.');
+  startMeta(p, 150, 'sr');
+  return { ok: true, job: jobView(metaJobs[mk]) };
+});
+route('GET', new RegExp(`^/api/admin/job/${P}$`), (m) => ({ job: jobView(metaJobs[metaKey(plat(m[1]), 'sr')]) }));
 route('DELETE', /^\/api\/pros\/([\w-]+)$/, (m) => (noDemo(), removePro(m[1])));
 
 /* ------------------------------------------------------------------ */
@@ -3155,7 +3186,7 @@ const server = http.createServer(async (req, res) => {
     if (!r) return sendJson(req, res, 404, { error: 'Route inconnue.' });
     try {
       const body = req.method === 'POST' ? await readBody(req) : null;
-      const data = await r.fn(url.pathname.match(r.re), Object.fromEntries(url.searchParams), body);
+      const data = await r.fn(url.pathname.match(r.re), Object.fromEntries(url.searchParams), body, req);
       sendJson(req, res, 200, data);
     } catch (e) {
       const status = e instanceof ApiError ? e.status : 500;

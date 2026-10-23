@@ -1289,3 +1289,36 @@ a.who-pro:hover { filter: brightness(1.2); transform: translateY(-1px); }
 .om-p b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .om-p .emb { --s: 20px; margin: -3px 0; }
 .om-all { margin: 10px 12px 12px; width: calc(100% - 24px); }
+
+/* Résumé du profil : jauge en SVG (texte et arc grandissent ensemble) + tuiles qui passent à la ligne */
+.gauge { width: 100%; max-width: 140px; }
+.gauge svg { width: 100%; height: auto; display: block; }
+.gauge .g-pct { fill: var(--text); font-family: var(--font-display); font-weight: 700; font-size: 16px; }
+.gauge .g-lbl { fill: var(--faint, var(--muted)); font-weight: 750; font-size: 6.2px; letter-spacing: 0.06em; }
+.gauge .g-txt { display: none; }
+.summary { grid-template-columns: 130px minmax(190px, 1.35fr) minmax(170px, 1.1fr) minmax(130px, 0.9fr) minmax(120px, 0.8fr) minmax(120px, 0.8fr) !important; }
+/* Écran moyen : deux lignes de trois tuiles, sans chevauchement */
+@media (max-width: 1280px) {
+  .summary { grid-template-columns: minmax(130px, 0.8fr) minmax(200px, 1.4fr) minmax(190px, 1.2fr) !important; }
+  .summary .st:nth-child(4), .summary .st:nth-child(5), .summary .st:nth-child(6) { border-top: 1px solid var(--line-soft); }
+  .summary .st:nth-child(4) { border-left: 0; }
+}
+@media (max-width: 700px) {
+  .summary { grid-template-columns: 1fr 1fr !important; }
+  .summary .st-ch, .summary .st-kda { grid-column: span 2; }
+}
+.summary .st { min-width: 0; }
+.st-place .st-hint, .st-score .st-hint, .st-allies .st-hint { max-width: 170px; }
+.kda3 { flex-wrap: nowrap; }
+.kda3 span small { font-size: 9.5px; }
+.summary { align-items: stretch !important; }
+.kda3 { gap: 4px; }
+.kda3 span { padding: 5px 4px; }
+
+/* Accueil : ajout de 150 parties (mot de passe) */
+.add-games { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; margin-top: 12px; }
+.ag-form { display: flex; gap: 6px; }
+.ag-form input { height: 32px; width: 170px; padding: 0 10px; border-radius: 9px; border: 1px solid var(--line); background: rgba(0, 0, 0, 0.25); color: var(--text); font: inherit; font-size: 13px; }
+.ag-msg { font-size: 12.5px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+.ag-msg.good { color: var(--win); }
+.ag-msg.bad { color: var(--loss); }

@@ -39,6 +39,14 @@ export async function render(el, _params, ctx) {
         <button type="button" class="chip" data-try="Lee Sin">${champImg(64, 22)}Lee Sin</button>
       </div>
       <div class="hero-status" id="status" aria-live="polite"></div>
+      ${S.cfg.hasKey ? `<div class="add-games" id="addGames">
+        <button class="btn btn-sm" type="button" id="agOpen"><svg viewBox="0 0 20 20" width="14" height="14" aria-hidden="true"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>Ajouter 150 parties</button>
+        <form class="ag-form" id="agForm" hidden>
+          <input type="password" id="agPass" placeholder="Mot de passe" autocomplete="current-password" aria-label="Mot de passe" required>
+          <button class="btn btn-sm btn-primary" type="submit">Lancer</button>
+        </form>
+        <span class="ag-msg" id="agMsg" aria-live="polite"></span>
+      </div>` : ''}
     </section>
 
     <div class="home-cards">
@@ -102,6 +110,7 @@ export async function render(el, _params, ctx) {
   );
 
   drawPeople(el);
+  wireAddGames(el, ctx);
   loadRegionPanels(el, ctx);
   loadLadder(el, ctx, LADDER_TABS[0][0]);
   el.querySelectorAll('[data-lad]').forEach((b) =>
@@ -358,3 +367,48 @@ async function loadRegionPanels(el, ctx) {
     .catch(fail(status));
 }
 
+
+/* ---------- Ajout de 150 parties (protégé par mot de passe côté serveur) ---------- */
+function wireAddGames(el, ctx) {
+  const box = el.querySelector('#addGames');
+  if (!box) return;
+  const form = box.querySelector('#agForm');
+  const msg = box.querySelector('#agMsg');
+  const show = (t, cls = '') => {
+    msg.className = `ag-msg ${cls}`;
+    msg.innerHTML = t;
+  };
+  let timer = null;
+  const poll = async () => {
+    clearTimeout(timer);
+    if (!ctx.alive()) return;
+    const r = await api(`/admin/job/${S.platform}`).catch(() => null);
+    const j = r?.job;
+    if (j?.running) {
+      show(`<span class="spinner"></span>${esc(j.phase || 'Analyse')} : ${j.done} / ${j.target} parties`);
+      timer = setTimeout(poll, 4000);
+    } else if (j && j.done) show(j.error ? esc(j.error) : `${j.done} parties ajoutées.`, j.error ? 'bad' : 'good');
+  };
+  box.querySelector('#agOpen').addEventListener('click', () => {
+    form.hidden = !form.hidden;
+    if (!form.hidden) form.querySelector('input').focus();
+  });
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const input = form.querySelector('input');
+    const btn = form.querySelector('button');
+    btn.disabled = true;
+    try {
+      await api(`/admin/add-games/${S.platform}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: input.value }) });
+      input.value = '';
+      form.hidden = true;
+      show('<span class="spinner"></span>Analyse lancée…');
+      poll();
+    } catch (err) {
+      show(esc(err.message), 'bad');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+  poll();
+}

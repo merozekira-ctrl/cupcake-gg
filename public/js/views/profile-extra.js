@@ -46,12 +46,13 @@ export function gauge(w, n) {
   const winD = arc(0, Math.max(0, p - gap / 2));
   const lossD = arc(Math.min(1, p + gap / 2), 1);
   return `<div class="gauge" role="img" aria-label="${pct(w, n)} de victoires">
-    <svg viewBox="0 0 100 56" aria-hidden="true">
+    <svg viewBox="0 0 100 58" aria-hidden="true">
       ${n ? '' : `<path d="${arc(0, 1)}" class="g-track"/>`}
       ${lossD ? `<path d="${lossD}" class="g-loss"/>` : ''}
       ${winD ? `<path d="${winD}" class="g-win"/>` : ''}
+      <text x="50" y="41" text-anchor="middle" class="g-pct">${n ? Math.round(p * 100) + (document.documentElement.lang === 'en' ? '%' : ' %') : '–'}</text>
+      <text x="50" y="52" text-anchor="middle" class="g-lbl">WINRATE</text>
     </svg>
-    <div class="g-txt"><b>${n ? Math.round(p * 100) + ' %' : '–'}</b><small>winrate</small></div>
     <span class="gauge-wl"><span class="good">${w} V</span> – <span class="bad">${n - w} D</span></span>
   </div>`;
 }

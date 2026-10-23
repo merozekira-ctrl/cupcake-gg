@@ -1372,3 +1372,43 @@ a.who-pro:hover { filter: brightness(1.2); transform: translateY(-1px); }
 /* Fondu plus marqué vers la droite (tier list de l'accueil) */
 .hc-art { border-radius: 8px 0 0 8px; width: 72px; }
 .hc-art img { -webkit-mask-image: linear-gradient(90deg, #000 25%, rgba(0, 0, 0, 0.55) 55%, rgba(0, 0, 0, 0.05) 100%); mask-image: linear-gradient(90deg, #000 25%, rgba(0, 0, 0, 0.55) 55%, rgba(0, 0, 0, 0.05) 100%); }
+
+/* Badge pro : sigle d'équipe collé à gauche, sans liseré */
+.who-pro { padding: 0 7px 0 0; overflow: hidden; gap: 6px; }
+.who-pro b { align-self: stretch; display: inline-flex; align-items: center; padding: 0 6px; border-radius: 0; }
+.who-pro svg { margin-left: 6px; }
+
+/* Chargement : petit cupcake gris qui se remplit en rouge, avec un reflet qui tourne */
+@property --cf { syntax: '<percentage>'; inherits: false; initial-value: 0%; }
+@property --ca { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background:
+    conic-gradient(from var(--ca), transparent 0 70%, rgba(255, 255, 255, 0.55) 82%, transparent 94%),
+    linear-gradient(0deg, var(--accent, #ff2e4d) var(--cf), rgba(160, 166, 190, 0.35) var(--cf));
+  -webkit-mask: url('/brand/cupcake-mask.svg') center / contain no-repeat;
+  mask: url('/brand/cupcake-mask.svg') center / contain no-repeat;
+  animation: cupcake-fill 1.8s cubic-bezier(0.45, 0, 0.25, 1) infinite, cupcake-shine 1.2s linear infinite !important;
+}
+.loading-line .spinner { width: 26px; height: 26px; }
+@keyframes cupcake-fill {
+  0% { --cf: 0%; }
+  70% { --cf: 100%; }
+  100% { --cf: 100%; }
+}
+@keyframes cupcake-shine {
+  to { --ca: 360deg; }
+}
+:root[data-theme='light'] .spinner {
+  background:
+    conic-gradient(from var(--ca), transparent 0 70%, rgba(255, 255, 255, 0.7) 82%, transparent 94%),
+    linear-gradient(0deg, #e0243f var(--cf), rgba(40, 42, 55, 0.22) var(--cf));
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation: cupcake-fill 2.4s linear infinite !important; }
+}
+/* Tier S+ : lueur discrète */
+.tier-SP { text-shadow: 0 0 6px rgba(255, 46, 77, 0.28); }

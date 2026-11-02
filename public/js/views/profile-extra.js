@@ -144,7 +144,7 @@ export function rankIa(sum, games) {
   // Indice entre -1 et 1 : 45 % place dans la partie, 25 % score, 20 % winrate, 10 % KDA.
   const z =
     0.45 * ((5.5 - avgPlace) / 4.5) +
-    0.25 * ((avgScore - 54) / 30) +
+    0.25 * ((avgScore - 59) / 30) +
     0.2 * ((wr - 0.5) * 3) +
     0.1 * Math.max(-1, Math.min(1, (Math.min(kda, 8) - 3) / 3));
   const conf = Math.min(1, n / 20);
@@ -158,7 +158,7 @@ export function rankIa(sum, games) {
   const pctz = Math.round(((z + 1) / 2) * 100);
   const facts = [
     [`Place moyenne dans la partie`, `${dec(avgPlace, 1)}/10`, avgPlace <= 4.5],
-    [`Score cupcake moyen`, `${Math.round(avgScore)}/100`, avgScore >= 60],
+    [`Score cupcake moyen`, `${Math.round(avgScore)}/100`, avgScore >= 65],
     [`Winrate`, pct(wr, 1), wr >= 0.5],
     [`KDA`, kdaText(kda), kda >= 3],
   ];

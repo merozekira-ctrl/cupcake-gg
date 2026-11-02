@@ -373,8 +373,8 @@ export function setPlatform(p) {
 // joueur), sur une échelle logarithmique : égal à la médiane = 0,5, le double ≈ 0,85,
 // la moitié ≈ 0,15. Les poids dépendent du rôle (le support est jugé sur la vision,
 // l'utilitaire et la participation ; le jungler sur les objectifs).
-// Repères (simulation de parties classées) : moyenne ≈ 54, victoire ≈ 62, défaite ≈ 47,
-// 10 % des parties au-dessus de 75, environ 2,5 % à 85 ou plus.
+// Repères (simulation de parties classées) : moyenne ≈ 59, victoire ≈ 67, défaite ≈ 51,
+// 10 % des parties au-dessus de 81, environ 6 % à 85 ou plus.
 
 const SCORE_W = {
   def: { kda: 0.2, kp: 0.17, dmg: 0.15, share: 0.1, gold: 0.08, cs: 0.1, vis: 0.06, obj: 0.07, tank: 0.07 },
@@ -452,7 +452,7 @@ export function scoreMatch(m) {
     let v = 0;
     for (const k in W) v += W[k] * c[k];
     // v ≈ 0,5 = partie dans la moyenne de la lobby.
-    let s = 52 + (v - 0.5) * 120;
+    let s = 57 + (v - 0.5) * 125;
     // Grosse série de morts : légère pénalité (1 point par mort au-delà de 8, 5 max).
     if (!arena) s -= Math.min(5, Math.max(0, p.d - 8));
     s += arena ? (p.place && p.place <= 2 ? 5 : 0) : p.win ? 5 : 0;
@@ -565,7 +565,7 @@ export function levelAvatar(step, size = 48) {
   </svg>`;
 }
 
-// Niveau des alliés : comparé à un coéquipier moyen (score moyen ≈ 54 → 50 % « Humain »).
-// Un allié à 66 de score moyen donne ~70 %, à 36 ~21 %.
-export const ALLY_AVG = 54;
+// Niveau des alliés : comparé à un coéquipier moyen (score moyen ≈ 59 → 50 % « Humain »).
+// Un allié à 71 de score moyen donne ~70 %, à 41 ~21 %.
+export const ALLY_AVG = 59;
 export const allyLevel = (avgScore) => Math.max(0, Math.min(100, 50 + (avgScore - ALLY_AVG) * 1.6));

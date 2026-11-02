@@ -88,26 +88,29 @@ export function rich(s) {
     .replace(/\n/g, '<br>');
 }
 
-const nf = new Intl.NumberFormat('fr-FR');
+export const LANG = document.documentElement.lang === 'en' ? 'en' : 'fr';
+export const EN = LANG === 'en';
+const LOCALE = EN ? 'en-US' : 'fr-FR';
+const nf = new Intl.NumberFormat(LOCALE);
 export const num = (n) => nf.format(Math.round(n || 0));
-export const dec = (n, d = 1) => (Number.isFinite(n) ? n.toFixed(d).replace('.', ',') : '–');
+export const dec = (n, d = 1) => (Number.isFinite(n) ? (EN ? n.toFixed(d) : n.toFixed(d).replace('.', ',')) : '–');
 export const kNum = (n) => (n >= 1000 ? dec(n / 1000, 1) + ' k' : String(Math.round(n || 0)));
 export const pct = (a, b, d = 0) => (b ? dec((a / b) * 100, d) + ' %' : '–');
 export const kdaRatio = (k, d, a) => (d ? (k + a) / d : k + a ? Infinity : 0);
-export const kdaText = (r) => (r === Infinity ? 'Parfait' : dec(r, 2));
+export const kdaText = (r) => (r === Infinity ? (EN ? 'Perfect' : 'Parfait') : dec(r, 2));
 
-const rtf = new Intl.RelativeTimeFormat('fr', { numeric: 'auto' });
+const rtf = new Intl.RelativeTimeFormat(LANG, { numeric: 'auto' });
 export function ago(ts) {
   const s = (ts - Date.now()) / 1000;
   const a = Math.abs(s);
-  if (a < 60) return 'à l’instant';
+  if (a < 60) return EN ? 'just now' : 'à l’instant';
   if (a < 3600) return rtf.format(Math.round(s / 60), 'minute');
   if (a < 86400) return rtf.format(Math.round(s / 3600), 'hour');
   if (a < 30 * 86400) return rtf.format(Math.round(s / 86400), 'day');
   if (a < 365 * 86400) return rtf.format(Math.round(s / (30 * 86400)), 'month');
   return rtf.format(Math.round(s / (365 * 86400)), 'year');
 }
-const dtf = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'medium', timeStyle: 'short' });
+const dtf = new Intl.DateTimeFormat(LOCALE, { dateStyle: 'medium', timeStyle: 'short' });
 export const fullDate = (ts) => dtf.format(new Date(ts));
 export const clock = (sec) => {
   sec = Math.max(0, Math.floor(sec));
@@ -143,7 +146,14 @@ export const QUEUES = {
   1900: 'URF',
   2400: 'ARAM Mayhem',
 };
-export const queueName = (q) => QUEUES[q] || 'Mode spécial';
+// Noms officiels du client anglais.
+if (EN)
+  Object.assign(QUEUES, {
+    0: 'Custom', 400: 'Normal Draft', 420: 'Ranked Solo/Duo', 430: 'Normal Blind', 440: 'Ranked Flex', 480: 'Swiftplay', 490: 'Swiftplay',
+    830: 'Co-op vs. AI', 840: 'Co-op vs. AI', 850: 'Co-op vs. AI', 870: 'Co-op vs. AI', 880: 'Co-op vs. AI', 890: 'Co-op vs. AI',
+    1010: 'Snow ARURF', 1020: 'One for All', 1400: 'Ultimate Spellbook',
+  });
+export const queueName = (q) => QUEUES[q] || (EN ? 'Special mode' : 'Mode spécial');
 export const isArena = (q) => q === 1700 || q === 1710;
 
 export const TIERS = {
@@ -158,11 +168,12 @@ export const TIERS = {
   GRANDMASTER: 'Grand Maître',
   CHALLENGER: 'Challenger',
 };
+if (EN) Object.assign(TIERS, { IRON: 'Iron', SILVER: 'Silver', GOLD: 'Gold', PLATINUM: 'Platinum', EMERALD: 'Emerald', DIAMOND: 'Diamond', MASTER: 'Master', GRANDMASTER: 'Grandmaster' });
 const APEX = ['MASTER', 'GRANDMASTER', 'CHALLENGER'];
-const SHORT = { IRON: 'Fe', BRONZE: 'Br', SILVER: 'Ag', GOLD: 'Or', PLATINUM: 'Pt', EMERALD: 'Em', DIAMOND: 'Di', MASTER: 'M', GRANDMASTER: 'GM', CHALLENGER: 'C' };
+const SHORT = { IRON: EN ? 'I' : 'Fe', BRONZE: 'Br', SILVER: EN ? 'S' : 'Ag', GOLD: EN ? 'G' : 'Or', PLATINUM: 'Pt', EMERALD: 'Em', DIAMOND: 'Di', MASTER: 'M', GRANDMASTER: 'GM', CHALLENGER: 'C' };
 const DIV = { I: 1, II: 2, III: 3, IV: 4 };
 
-export const rankText = (r) => (!r ? 'Non classé' : APEX.includes(r.tier) ? TIERS[r.tier] : `${TIERS[r.tier] || r.tier} ${DIV[r.rank] || r.rank}`);
+export const rankText = (r) => (!r ? (EN ? 'Unranked' : 'Non classé') : APEX.includes(r.tier) ? TIERS[r.tier] : `${TIERS[r.tier] || r.tier} ${DIV[r.rank] || r.rank}`);
 
 // Écusson dessiné en CSS : affiché pour « non classé » ou si l'emblème officiel ne charge pas.
 export function fallbackCrest(tier, div, size = 'md') {
@@ -179,7 +190,7 @@ export function crest(r, size = 'md') {
   return `<span class="emb emb-${size}" data-tier="${tier}" data-div="${div}" aria-hidden="true"><img class="rank-img" src="/ranks/${tier.toLowerCase()}.png" alt="" decoding="async">${roman ? `<b class="emb-div">${roman}</b>` : ''}</span>`;
 }
 
-export const ROLES = { TOP: 'Haut', JUNGLE: 'Jungle', MIDDLE: 'Milieu', BOTTOM: 'Tireur', UTILITY: 'Support' };
+export const ROLES = EN ? { TOP: 'Top', JUNGLE: 'Jungle', MIDDLE: 'Mid', BOTTOM: 'Bot', UTILITY: 'Support' } : { TOP: 'Haut', JUNGLE: 'Jungle', MIDDLE: 'Milieu', BOTTOM: 'Tireur', UTILITY: 'Support' };
 export const ROLE_ORDER = ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY'];
 
 // Icônes de position (deux tons : .ri-a = partie mise en avant, .ri-b = cadre).
@@ -268,7 +279,7 @@ export const norm = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u0
 export const DEMO_NOTE =
   'Version de démonstration : seules 150 parties classées (Faille de l’invocateur, EUW) sont répertoriées, et les builds ARAM, ARAM du chaos et Arena ne sont pas encore disponibles. Analyser plus de parties demande un serveur payant ; je le mettrai en place dès que Riot aura validé le projet.';
 
-export const CLASSES = { Fighter: 'Combattant', Tank: 'Tank', Mage: 'Mage', Assassin: 'Assassin', Marksman: 'Tireur', Support: 'Support' };
+export const CLASSES = EN ? { Fighter: 'Fighter', Tank: 'Tank', Mage: 'Mage', Assassin: 'Assassin', Marksman: 'Marksman', Support: 'Support' } : { Fighter: 'Combattant', Tank: 'Tank', Mage: 'Mage', Assassin: 'Assassin', Marksman: 'Tireur', Support: 'Support' };
 
 /* ---------- Images Data Dragon ---------- */
 
@@ -358,10 +369,28 @@ export function setPlatform(p) {
 }
 
 /* ---------- Score de performance (0 à 10) ---------- */
-// Compare chaque joueur au reste de la partie : KDA, participation, dégâts,
-// or, farm, vision, objectifs et encaissement, pondérés puis ramenés sur 10.
+// Barème équilibré : chaque stat est comparée à la médiane de la partie (pas au meilleur
+// joueur), sur une échelle logarithmique : égal à la médiane = 0,5, le double ≈ 0,85,
+// la moitié ≈ 0,15. Les poids dépendent du rôle (le support est jugé sur la vision,
+// l'utilitaire et la participation ; le jungler sur les objectifs).
+// Repères (simulation de parties classées) : moyenne ≈ 54, victoire ≈ 62, défaite ≈ 47,
+// 10 % des parties au-dessus de 75, environ 2,5 % à 85 ou plus.
 
-const W = { kda: 0.22, kp: 0.16, dmg: 0.15, share: 0.07, gold: 0.1, cs: 0.08, vis: 0.1, obj: 0.06, tank: 0.06 };
+const SCORE_W = {
+  def: { kda: 0.2, kp: 0.17, dmg: 0.15, share: 0.1, gold: 0.08, cs: 0.1, vis: 0.06, obj: 0.07, tank: 0.07 },
+  JUNGLE: { kda: 0.2, kp: 0.2, dmg: 0.11, share: 0.06, gold: 0.08, cs: 0.06, vis: 0.09, obj: 0.14, tank: 0.06 },
+  UTILITY: { kda: 0.22, kp: 0.22, dmg: 0.06, share: 0.02, gold: 0.04, vis: 0.22, obj: 0.02, tank: 0.04, util: 0.16 },
+};
+// Planchers des références : évite qu'une partie où tout le monde joue peu gonfle les scores.
+const SCORE_FLOOR = { kda: 2, dmg: 500, gold: 330, cs: 5, vis: 0.6, obj: 250, tank: 900, util: 120 };
+const clamp01 = (x) => Math.max(0, Math.min(1, x));
+const median = (a) => {
+  const s = a.filter(Number.isFinite).sort((x, y) => x - y);
+  if (!s.length) return 0;
+  const h = s.length >> 1;
+  return s.length % 2 ? s[h] : (s[h - 1] + s[h]) / 2;
+};
+const relTo = (x, ref, floor, k = 0.35) => clamp01(0.5 + k * Math.log2(Math.max(x, 1e-6) / Math.max(ref, floor, 1e-6)));
 
 export function scoreMatch(m) {
   if (m._score) return m._score;
@@ -375,35 +404,59 @@ export function scoreMatch(m) {
     kills[g] = (kills[g] || 0) + p.k;
     dmg[g] = (dmg[g] || 0) + p.dmg;
   }
-  const metrics = m.parts.map((p) => {
+  const met = m.parts.map((p) => {
     const g = groupOf(p);
     return {
-      kda: (p.k + p.a * 0.75) / Math.max(1, p.d),
+      kda: (p.k + p.a * 0.7) / Math.max(1, p.d),
       kp: kills[g] ? (p.k + p.a) / kills[g] : 0,
       dmg: p.dmg / min,
       share: dmg[g] ? p.dmg / dmg[g] : 0,
       gold: p.gold / min,
       cs: p.cs / min,
       vis: p.vis / min,
-      obj: (p.obj + p.bld) / min,
+      obj: (p.obj + p.bld * 0.5) / min,
       tank: (p.taken + p.mitig) / min,
+      util: ((p.heal || 0) + (p.cc || 0) * 4) / min,
     };
   });
-  // Référence = meilleur de la partie, mais jamais sous un plancher absolu :
-  // dans une partie où tout le monde joue mal, personne n'atteint le maximum.
-  const FLOOR = { kda: 5, kp: 0.65, dmg: 900, share: 0.3, gold: 480, cs: 8, vis: 1.6, obj: 400, tank: 1500 };
-  const max = {};
-  for (const k in W) max[k] = Math.max(FLOOR[k] || 1e-9, ...metrics.map((x) => x[k]));
-  const scores = metrics.map((x, i) => {
-    let rel = 0;
-    for (const k in W) rel += W[k] * Math.min(1, x[k] / max[k]);
+  // Références : médiane de la partie ; supports exclus pour le farm, l'or et les dégâts.
+  const carries = met.filter((x, i) => m.parts[i].pos !== 'UTILITY');
+  const pool = carries.length >= 4 ? carries : met;
+  const ref = {
+    kda: median(met.map((x) => x.kda)),
+    dmg: median(pool.map((x) => x.dmg)),
+    gold: median(pool.map((x) => x.gold)),
+    cs: median(pool.map((x) => x.cs)),
+    vis: median(met.map((x) => x.vis)),
+    obj: median(met.map((x) => x.obj)),
+    tank: median(met.map((x) => x.tank)),
+    util: median(met.map((x) => x.util)),
+  };
+  const F = SCORE_FLOOR;
+  const scores = met.map((x, i) => {
     const p = m.parts[i];
-    // Barème exigeant : 0,25 de « relatif » = 0, 0,90 = 100. Une partie moyenne tourne autour de 40-50.
-    let v = (rel - 0.25) / 0.65;
-    // Morts : au-delà de 5, chaque mort coûte 3 points (15 max).
-    if (!arena) v -= Math.min(0.15, Math.max(0, p.d - 5) * 0.03);
-    v += arena ? (p.place && p.place <= 2 ? 0.04 : 0) : p.win ? 0.04 : 0;
-    return Math.max(0, Math.min(10, v * 10));
+    const sup = p.pos === 'UTILITY';
+    const W = SCORE_W[p.pos] || SCORE_W.def;
+    const c = {
+      kda: relTo(x.kda, ref.kda, F.kda, 0.28),
+      kp: clamp01(0.5 + (x.kp - 0.5) * 1.4),
+      dmg: relTo(x.dmg, sup ? ref.dmg * 0.5 : ref.dmg, F.dmg * (sup ? 0.5 : 1)),
+      share: relTo(x.share, sup ? 0.1 : 0.225, 0.05),
+      gold: relTo(x.gold, sup ? ref.gold * 0.7 : ref.gold, F.gold),
+      cs: relTo(x.cs, p.pos === 'JUNGLE' ? ref.cs * 0.85 : ref.cs, F.cs),
+      vis: relTo(x.vis, sup ? ref.vis * 2 : ref.vis, F.vis),
+      obj: relTo(x.obj, ref.obj, F.obj),
+      tank: relTo(x.tank, ref.tank, F.tank),
+      util: relTo(x.util, Math.max(ref.util, 300), F.util),
+    };
+    let v = 0;
+    for (const k in W) v += W[k] * c[k];
+    // v ≈ 0,5 = partie dans la moyenne de la lobby.
+    let s = 52 + (v - 0.5) * 120;
+    // Grosse série de morts : légère pénalité (1 point par mort au-delà de 8, 5 max).
+    if (!arena) s -= Math.min(5, Math.max(0, p.d - 8));
+    s += arena ? (p.place && p.place <= 2 ? 5 : 0) : p.win ? 5 : 0;
+    return Math.max(0, Math.min(100, s)) / 10;
   });
   const order = scores.map((s, i) => i).sort((a, b) => scores[b] - scores[a]);
   const rank = [];
@@ -421,7 +474,7 @@ export function scoreMatch(m) {
 }
 
 // Niveau d'un joueur sur 100 (score cupcake) : un palier tous les 10 %.
-const LEVELS = ['Déchu', 'Démon', 'Diable', 'Diablotin', 'Cornu', 'Humain', 'Valeureux', 'Béni', 'Séraphin', 'Archange', 'GOAT'];
+const LEVELS = EN ? ['Fallen', 'Demon', 'Devil', 'Imp', 'Horned', 'Human', 'Valiant', 'Blessed', 'Seraph', 'Archangel', 'GOAT'] : ['Déchu', 'Démon', 'Diable', 'Diablotin', 'Cornu', 'Humain', 'Valeureux', 'Béni', 'Séraphin', 'Archange', 'GOAT'];
 export function levelOf(v) {
   const x = Math.max(0, Math.min(100, Math.round(v)));
   return { v: x, step: levelStep(x), label: LEVELS[levelStep(x)] };
@@ -511,3 +564,8 @@ export function levelAvatar(step, size = 48) {
     </g>
   </svg>`;
 }
+
+// Niveau des alliés : comparé à un coéquipier moyen (score moyen ≈ 54 → 50 % « Humain »).
+// Un allié à 66 de score moyen donne ~70 %, à 36 ~21 %.
+export const ALLY_AVG = 54;
+export const allyLevel = (avgScore) => Math.max(0, Math.min(100, 50 + (avgScore - ALLY_AVG) * 1.6));

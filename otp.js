@@ -124,7 +124,11 @@ export async function render(el, { p }, ctx) {
     box.innerHTML = `<div class="panel state"><p class="state-title">Aucun OTP ${c ? 'de ' + esc(c.name) : ''} pour l’instant</p><p>${S.cfg.demo ? 'La démonstration ne contient que 150 parties : seuls les joueurs les plus réguliers apparaissent.' : 'L’échantillon de parties grossit à chaque analyse automatique : reviens un peu plus tard.'}</p>${state.champ || state.role !== 'ALL' ? `<a class="btn" href="#/otp/${platform}">Voir tous les OTP</a>` : ''}</div>`;
     return;
   }
-  const rows = data.rows;
+  await drawOtpList(box, data.rows, ctx);
+}
+
+// Podium + tableau des OTP, puis icônes et identités (25 par appel). Réutilisé par la fiche champion.
+export async function drawOtpList(box, rows, ctx) {
   const pod = rows.slice(0, 3);
   const rest = rows.slice(3);
   box.innerHTML = `
@@ -179,7 +183,7 @@ function drawFilter(el, state, data, hrefOf) {
     const q = norm(input.value);
     const items = all
       .filter((c) => (!q ? counts[c.key] : norm(c.name).includes(q)))
-      .sort((a, b) => (counts[b.key] || 0) - (counts[a.key] || 0) || a.name.localeCompare(b.name, 'fr'))
+      .sort((a, b) => (counts[b.key] || 0) - (counts[a.key] || 0) || a.name.localeCompare(b.name, LOC))
       .slice(0, 30);
     list.innerHTML = items.length
       ? items.map((c) => `<button type="button" data-c="${c.key}">${champImg(c.key, 26)}${esc(c.name)}<small>${counts[c.key] ? `${counts[c.key]} OTP` : ''}</small></button>`).join('')

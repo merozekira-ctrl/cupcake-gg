@@ -2,7 +2,7 @@
 import {
   S, api, esc, store, champImg, champOf, champByKey, champHref, crest, rankText, playerHref, profileImg,
   regionOptions, setPlatform, removeRecent, toggleFav, setTitle, loading, ago, roleIcon, roleBar, ROLES,
-  wrBadge, proBadge, patchLabel, num, pct,
+  wrBadge, proBadge, patchLabel, num, pct, loadingUrl,
 } from '../core.js';
 import { bindOmni } from '../omni.js';
 import { tierRows } from './champions.js';
@@ -39,6 +39,14 @@ export async function render(el, _params, ctx) {
         <button type="button" class="chip" data-try="Lee Sin">${champImg(64, 22)}Lee Sin</button>
       </div>
       <div class="hero-status" id="status" aria-live="polite"></div>
+      ${S.cfg.hasKey ? `<div class="add-games" id="addGames">
+        <button class="btn btn-sm" type="button" id="agOpen"><svg viewBox="0 0 20 20" width="14" height="14" aria-hidden="true"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>Ajouter 150 parties</button>
+        <form class="ag-form" id="agForm" hidden>
+          <input type="password" id="agPass" placeholder="Mot de passe" autocomplete="current-password" aria-label="Mot de passe" required>
+          <button class="btn btn-sm btn-primary" type="submit">Lancer</button>
+        </form>
+        <span class="ag-msg" id="agMsg" aria-live="polite"></span>
+      </div>` : ''}
     </section>
 
     <div class="home-cards">
@@ -66,7 +74,7 @@ export async function render(el, _params, ctx) {
       <a class="feat feat-otp" href="#/otp"><span class="feat-img"><img src="/brand/otp.png" alt=""></span><span><b>Classement OTP</b><small>Les spécialistes d’un seul champion, région par région.</small></span></a>
     </div>
 
-    <div class="home-grid">
+    <div class="home-grid home-duo">
       <section class="panel" aria-labelledby="h-fav">
         <div class="panel-title"><h2 id="h-fav">Favoris</h2></div>
         <div id="favs"></div>
@@ -74,10 +82,6 @@ export async function render(el, _params, ctx) {
       <section class="panel" aria-labelledby="h-rec">
         <div class="panel-title"><h2 id="h-rec">Recherches récentes</h2></div>
         <div id="recents"></div>
-      </section>
-      <section class="panel home-rot" aria-labelledby="h-rot">
-        <div class="panel-title"><h2 id="h-rot">Rotation gratuite</h2><span class="muted small" id="rotRegion"></span></div>
-        <div id="rot">${loading()}</div>
       </section>
     </div>`;
 
@@ -102,6 +106,7 @@ export async function render(el, _params, ctx) {
   );
 
   drawPeople(el);
+  wireAddGames(el, ctx);
   loadRegionPanels(el, ctx);
   loadLadder(el, ctx, LADDER_TABS[0][0]);
   el.querySelectorAll('[data-lad]').forEach((b) =>
@@ -186,7 +191,7 @@ function drawTierPreview(el, meta) {
       ? `<div class="hc-cols"><span>Champion</span><span>Tier</span><span>Winrate</span><span>Pick</span></div>${rows
           .map(
             (r) => `<a class="hc-row" href="${champHref(r.champ, role)}">
-              <span class="hc-who">${champImg(r.id, 38)}<span><b>${esc(r.champ.name)}</b><small>${num(r.c.g)} parties</small></span></span>
+              <span class="hc-who"><span class="hc-art"><img src="${esc(loadingUrl(r.champ.id))}" alt="" loading="lazy"></span><span><b>${esc(r.champ.name)}</b><small>${num(r.c.g)} parties</small></span></span>
               <span class="tier tier-${r.tier.replace('+', 'P')}">${r.tier}</span>
               <span class="hc-num">${wrBadge(r.c.w, r.c.g, { d: 1 })}</span>
               <span class="hc-num">${pct(r.pr, 1, 1)}</span>
@@ -276,7 +281,7 @@ async function loadPatch(el, ctx) {
   el.querySelector('#patchMore').href = `#/patch/${cur.patch}`;
   let notes = null;
   try {
-    notes = await api(`/patch-notes/${cur.patch}`);
+    notes = await api(`/patch-notes/${cur.patch}${document.documentElement.lang === 'en' ? '?lang=en_US' : ''}`);
   } catch {
     /* notes indisponibles */
   }
@@ -291,9 +296,11 @@ async function loadPatch(el, ctx) {
     const c = champByKey(e.champ || '') || (e.key && champOf(e.key));
     return c ? `<a class="k-${e.kind}" href="#/patch/${cur.patch}?c=${esc(c.id)}" title="${esc(c.name)}">${champImg(c.key, 30)}</a>` : '';
   };
+  // Version anglaise : les points clés en français ne sont pas affichés.
+  if (notes && document.documentElement.lang === 'en' && notes.lang === 'fr') notes.highlights = [];
   const date = notes?.date || cur.date;
   box.innerHTML = `
-    <div class="hp-banner">${notes?.image || cur.image ? `<img src="${esc(notes?.image || cur.image)}" alt="" loading="lazy">` : ''}<b>Patch ${esc(cur.patch)}</b>${date ? `<small>${esc(new Date(date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' }))}</small>` : ''}</div>
+    <div class="hp-banner">${notes?.image || cur.image ? `<img src="${esc(notes?.image || cur.image)}" alt="" loading="lazy">` : ''}<b>Patch ${esc(cur.patch)}</b>${date ? `<small>${esc(new Date(date).toLocaleDateString(LOC, { day: 'numeric', month: 'long' }))}</small>` : ''}</div>
     ${ents.length ? `<div class="hp-kinds">${kinds
       .map(([k, l]) => {
         const list2 = ents.filter((e) => e.kind === k);
@@ -309,8 +316,8 @@ async function loadPatch(el, ctx) {
 async function loadRegionPanels(el, ctx) {
   const p = S.platform;
   const label = S.cfg.platforms[p].label;
-  el.querySelector('#rotRegion').textContent = label;
-  const rot = el.querySelector('#rot');
+  // Rotation gratuite retirée de l'accueil : élément détaché pour garder le code de chargement inoffensif.
+  const rot = el.querySelector('#rot') || document.createElement('div');
   const status = el.querySelector('#status');
   const tier = el.querySelector('#tierPreview');
   if (!S.cfg.hasKey) {
@@ -338,14 +345,14 @@ async function loadRegionPanels(el, ctx) {
   api(`/rotation/${p}`)
     .then((r) => {
       if (!ctx.alive() || S.platform !== p) return;
-      const champs = r.free.map((id) => champOf(id)).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+      const champs = r.free.map((id) => champOf(id)).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name, LOC));
       rot.innerHTML = champs.length
         ? `<div class="rotation">${champs.map((c) => `<a href="${champHref(c)}" title="${esc(c.name)}">${champImg(c.key, 44)}<span>${esc(c.name)}</span></a>`).join('')}</div>`
         : '<p class="empty-hint">Aucune rotation publiée pour cette région.</p>';
     })
     .catch(fail(rot));
 
-  api(`/status/${p}`)
+  api(`/status/${p}${document.documentElement.lang === "en" ? "?lang=en_US" : ""}`)
     .then((s) => {
       if (!ctx.alive() || S.platform !== p) return;
       const first = s.issues[0];
@@ -356,3 +363,48 @@ async function loadRegionPanels(el, ctx) {
     .catch(fail(status));
 }
 
+
+/* ---------- Ajout de 150 parties (protégé par mot de passe côté serveur) ---------- */
+function wireAddGames(el, ctx) {
+  const box = el.querySelector('#addGames');
+  if (!box) return;
+  const form = box.querySelector('#agForm');
+  const msg = box.querySelector('#agMsg');
+  const show = (t, cls = '') => {
+    msg.className = `ag-msg ${cls}`;
+    msg.innerHTML = t;
+  };
+  let timer = null;
+  const poll = async () => {
+    clearTimeout(timer);
+    if (!ctx.alive()) return;
+    const r = await api(`/admin/job/${S.platform}`).catch(() => null);
+    const j = r?.job;
+    if (j?.running) {
+      show(`<span class="spinner"></span>${esc(j.phase || 'Analyse')} : ${j.done} / ${j.target} parties`);
+      timer = setTimeout(poll, 4000);
+    } else if (j && j.done) show(j.error ? esc(j.error) : `${j.done} parties ajoutées.`, j.error ? 'bad' : 'good');
+  };
+  box.querySelector('#agOpen').addEventListener('click', () => {
+    form.hidden = !form.hidden;
+    if (!form.hidden) form.querySelector('input').focus();
+  });
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const input = form.querySelector('input');
+    const btn = form.querySelector('button');
+    btn.disabled = true;
+    try {
+      await api(`/admin/add-games/${S.platform}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: input.value }) });
+      input.value = '';
+      form.hidden = true;
+      show('<span class="spinner"></span>Analyse lancée…');
+      poll();
+    } catch (err) {
+      show(esc(err.message), 'bad');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+  poll();
+}

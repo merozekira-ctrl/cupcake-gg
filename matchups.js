@@ -95,7 +95,7 @@ export async function render(el, { p }, ctx) {
       const qn = norm(input.value);
       const items = Object.values(S.st.champions)
         .filter((c) => !qn || norm(c.name).includes(qn))
-        .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
+        .sort((a, b) => a.name.localeCompare(b.name, LOC))
         .slice(0, 40);
       list.innerHTML = items.map((c) => `<button type="button" data-c="${esc(c.id)}">${champImg(c.key, 26)}${esc(c.name)}</button>`).join('');
       list.hidden = false;

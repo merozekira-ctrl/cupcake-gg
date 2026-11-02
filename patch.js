@@ -2,7 +2,7 @@
 import { S, api, esc, setTitle, loading, errorState, champImg, champOf, champByKey, champHref, itemImg } from '../core.js';
 
 const KINDS = { buff: 'Buff', nerf: 'Nerf', adjust: 'Ajusté', new: 'Nouveau' };
-const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '');
+const fmtDate = (d) => (d ? new Date(d).toLocaleDateString(LOC, { day: 'numeric', month: 'long', year: 'numeric' }) : '');
 
 // « Libellé : avant → après » : l'ancienne valeur barrée, la nouvelle mise en avant.
 function fmtLine(t) {
@@ -70,7 +70,7 @@ export async function render(el, { v }, ctx) {
   const body = el.querySelector('#pnBody');
   let notes;
   try {
-    notes = await api(`/patch-notes/${cur.patch}`);
+    notes = await api(`/patch-notes/${cur.patch}${document.documentElement.lang === 'en' ? '?lang=en_US' : ''}`);
   } catch (e) {
     if (ctx.alive()) body.innerHTML = errorState(e);
     return;
@@ -111,6 +111,11 @@ export async function render(el, { v }, ctx) {
     <details class="panel pn-auto pn-sec" id="pnAuto"><summary><span>Changements détectés dans les données du jeu <span class="muted small">(comparaison automatique Data Dragon)</span></span></summary><div id="pnAutoBody">${loading()}</div></details>
     <p class="pn-src">${notes.source === 'riot' ? 'Contenu extrait de l’article officiel de Riot Games.' : notes.source === 'seed' ? 'Résumé rédigé à partir de l’article officiel de Riot Games.' : ''} Valeurs indicatives : la référence reste l’article officiel.</p>`;
 
+  // Version anglaise sans article anglais disponible : le contenu des notes reste en français.
+  if (document.documentElement.lang === 'en' && notes.lang === 'fr' && secs.length) {
+    body.querySelectorAll('.pn-grid, .pn-hl').forEach((x) => x.setAttribute('data-nt', ''));
+    body.querySelector('.pn-hero')?.insertAdjacentHTML('afterend', '<p class="pn-lang-note" data-nt>The official English notes could not be loaded yet: change details are shown in French.</p>');
+  }
   body.querySelectorAll('[data-k]').forEach((b) =>
     b.addEventListener('click', () => {
       body.querySelectorAll('[data-k]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));

@@ -5,8 +5,9 @@ import {
   pushRecent, isFav, toggleFav, toast, errorState, loading, setTitle, setPlatform, TIERS, proBadge, wrBadge,
 } from '../core.js';
 import { matchCard, bindMatchList, resultOf } from './match.js';
-import { gameStats, chartPanel, rankIa, summaryBlock, dayHeader, groupByDay, champHighlights } from './profile-extra.js';
-import { roleBar, scoreMatch, levelRing } from '../core.js';
+import { gameStats, chartPanel, rankIa, summaryBlock, allyPanel, dayHeader, groupByDay, champHighlights } from './profile-extra.js';
+import { roleBar, scoreMatch, levelRing, allyLevel } from '../core.js';
+import { adSlot } from '../ads.js';
 
 const cache = new Map();
 const MATE_IC = new Map();
@@ -16,6 +17,7 @@ const TABS = [
   ['apercu', 'Aperçu'],
   ['champions', 'Champions'],
   ['maitrise', 'Maîtrise'],
+  ['saisons', 'Saisons'],
   ['direct', 'Partie en direct'],
 ];
 const FILTERS = [
@@ -96,6 +98,7 @@ function draw(el, st, tab, ctx) {
           <span class="season-pill" id="seasonPill"><span class="spinner"></span>Saison 2026…</span>
           <span id="livePill"></span>
         </div>
+        ${peakPill(s)}
       </div>
       <div class="p-actions">
         <button class="btn" id="favBtn" type="button" aria-pressed="${fav}">${starIcon(fav)}<span>${fav ? 'Favori' : 'Ajouter aux favoris'}</span></button>
@@ -137,10 +140,105 @@ function draw(el, st, tab, ctx) {
   const body = el.querySelector('#tabBody');
   if (tab === 'champions') drawChampions(body, st, ctx);
   else if (tab === 'maitrise') drawMastery(body, st);
+  else if (tab === 'saisons') drawSeasons(body, st);
   else if (tab === 'direct') drawLive(body, st, ctx, el);
   else drawOverview(body, st, ctx);
   if (tab !== 'direct') checkLive(el, st, ctx);
   loadSeason(el, st, ctx);
+  estimatePeak(el, st, ctx).catch(() => {});
+}
+
+/* ---------- Peak et saisons ---------- */
+// Riot ne fournit ni le peak ni les saisons passées : ces rangs sont ceux que cupcake.gg
+// a enregistrés lui-même (profil consulté, joueur croisé en partie ou en direct).
+const rankLine = (r) => (r ? `${esc(rankText(r))} · ${num(r.lp)} LP` : '–');
+function peakPill(s) {
+  const p = s.peak;
+  if (!p) return '';
+  const title = p.est ? 'Rang le plus haut de la saison, estimé en remontant les dernières parties Solo/Duo depuis le rang actuel (environ 20 LP par partie)' : 'Rang le plus haut atteint cette saison';
+  return `<a class="peak-pill" href="${playerHref(s.platform, s.name, s.tag, 'saisons')}" title="${title}">${crest(p, 'xs')}<span><small>Peak${p.est ? ' estimé' : ''}</small><b>${p.est ? '≈ ' : ''}${rankLine(p)}</b></span><em>${p.q === 'flex' ? 'Flex · ' : ''}Saison ${esc(p.season)}</em></a>`;
+}
+
+/* ---------- Peak estimé ----------
+   cupcake.gg n'enregistre un rang que lorsqu'il voit le joueur : un joueur monté à
+   Master 800 LP puis redescendu à 600 LP avant sa première visite aurait un peak de 600.
+   On remonte donc ses dernières parties Solo/Duo de la saison depuis le rang actuel
+   (victoire = environ +20 LP, défaite = environ -20 LP) : le point le plus haut de ce
+   parcours devient le peak affiché (marqué « estimé ») s'il dépasse le peak enregistré. */
+const PK_TIERS = ['IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'EMERALD', 'DIAMOND', 'MASTER', 'GRANDMASTER', 'CHALLENGER'];
+const PK_DIVS = ['IV', 'III', 'II', 'I'];
+const PK_STEP = 20;
+function pkValue(r) {
+  const t = PK_TIERS.indexOf(r?.tier);
+  if (t < 0) return null;
+  return t >= 7 ? 2800 + (r.lp || 0) : t * 400 + Math.max(0, PK_DIVS.indexOf(r.rank)) * 100 + (r.lp || 0);
+}
+function pkRank(v, cur) {
+  // Au-dessus de Diamant I : les LP sont continus entre Master, Grand Maître et Challenger.
+  if (v >= 2800) return { tier: PK_TIERS.indexOf(cur.tier) >= 7 ? cur.tier : 'MASTER', rank: 'I', lp: v - 2800 };
+  const t = Math.floor(v / 400);
+  return { tier: PK_TIERS[t], rank: PK_DIVS[Math.floor((v % 400) / 100)], lp: v % 100 };
+}
+async function estimatePeak(el, st, ctx) {
+  const s = st.sum;
+  const cur = s.ranked?.solo;
+  const now = pkValue(cur);
+  if (now == null || !s.seasonStart) return;
+  if (!st.lists.solo) {
+    try {
+      st.lists.solo = await fetchPage(st, 'solo', 0, false, 20);
+    } catch {
+      return;
+    }
+  }
+  if (!ctx.alive()) return;
+  // Parties de la saison, de la plus récente à la plus ancienne. Une partie finie après
+  // la lecture du rang n'est peut-être pas encore comptée dans les LP : on l'ignore.
+  const games = st.lists.solo.items
+    .filter((m) => m.q === 420 && !m.remake && m.start >= s.seasonStart && m.end < st.at - 60e3)
+    .sort((a, b) => b.start - a.start);
+  let v = now;
+  let best = now;
+  let at = null;
+  for (const m of games) {
+    const me = m.parts.find((p) => p.puuid === s.puuid);
+    if (!me) continue;
+    v += me.win ? -PK_STEP : PK_STEP;
+    if (v > best) {
+      best = v;
+      at = m.start;
+    }
+  }
+  if (at == null || best <= (s.peak?.v ?? -1)) return;
+  s.peak = { ...pkRank(best, cur), v: best, t: at, q: 'solo', season: s.current, est: true };
+  const pill = el.querySelector('.peak-pill');
+  if (pill) pill.outerHTML = peakPill(s);
+  else el.querySelector('.p-meta')?.insertAdjacentHTML('afterend', peakPill(s));
+  if (el.querySelector('.seasons')) drawSeasons(el.querySelector('#tabBody'), st);
+}
+function seasonCell(box, label) {
+  if (!box) return `<div class="ss-q ss-empty"><small>${label}</small><span class="muted">Aucune donnée</span></div>`;
+  const pk = box.peak;
+  const last = box.last;
+  const games = last && last.w != null ? last.w + last.l : null;
+  return `<div class="ss-q"><small>${label}</small>
+    <div class="ss-rows">
+      <div class="ss-r">${crest(pk, 'sm')}<span><em>Peak</em><b>${rankLine(pk)}</b></span></div>
+      <div class="ss-r">${crest(last, 'sm')}<span><em>Dernier rang connu</em><b>${rankLine(last)}</b>${games ? `<small>${last.w} V · ${last.l} D · ${pct(last.w, games)}</small>` : ''}</span></div>
+    </div></div>`;
+}
+function drawSeasons(body, st) {
+  const s = st.sum;
+  const list = s.seasons || [];
+  body.innerHTML = `<section class="panel seasons">
+    <div class="panel-title"><h2>Saisons</h2>${s.peak ? `<span class="muted small">Peak${s.peak.est ? ' estimé' : ''} : ${s.peak.est ? '≈ ' : ''}${rankLine(s.peak)} (saison ${esc(s.peak.season)})</span>` : ''}</div>
+    ${list.length
+      ? `<div class="ss-list">${list
+          .map((x) => `<article class="ss-card${x.season === s.current ? ' cur' : ''}"><header><b>Saison ${esc(x.season)}</b>${x.season === s.current ? '<span class="ss-now">en cours</span>' : ''}</header><div class="ss-grid">${seasonCell(x.solo, 'Classée Solo/Duo')}${seasonCell(x.flex, 'Classée Flex')}</div></article>`)
+          .join('')}</div>`
+      : '<p class="empty-hint">Aucun rang enregistré pour ce joueur.</p>'}
+    <p class="muted small ss-note">Riot ne communique pas les rangs des saisons passées. cupcake.gg enregistre lui-même le meilleur rang et le dernier rang connu de chaque saison, à chaque fois que ce joueur est consulté ou croisé dans une partie : l’historique se complète au fil du temps.</p>
+  </section>`;
 }
 
 /* ---------- Parties jouées cette saison ---------- */
@@ -232,9 +330,9 @@ function checkLive(el, st, ctx) {
 
 /* ---------- Chargement des parties ---------- */
 
-async function fetchPage(st, f, start, force) {
+async function fetchPage(st, f, start, force, count = 10) {
   const qs = FILTERS.find(([id]) => id === f)[2];
-  const r = await api(`/matches/${st.sum.platform}/${st.sum.puuid}?start=${start}&count=10${qs}${force ? '&force=1' : ''}`);
+  const r = await api(`/matches/${st.sum.platform}/${st.sum.puuid}?start=${start}&count=${count}${qs}${force ? '&force=1' : ''}`);
   const prev = start ? st.lists[f]?.items || [] : [];
   return { items: [...prev, ...r.matches], more: r.more, busy: false, error: null };
 }
@@ -367,6 +465,7 @@ function drawOverview(body, st, ctx) {
     <div class="profile-grid">
       <aside class="stack">
         <section class="panel" aria-label="Rangs classés">${rankCard('Classée Solo/Duo', s.ranked.solo)}${rankCard('Classée Flex', s.ranked.flex)}</section>
+        <section class="panel ally-panel" id="allyBox" hidden></section>
         <section class="panel chart-panel" id="chartBox" aria-label="Graphique">${loading()}</section>
         <section class="panel card-accent" id="iaBox" aria-label="Rank IA">${loading()}</section>
         <section class="panel card-accent" id="seasonBox" aria-label="Saison en cours">${seasonHtml(st)}</section>
@@ -378,6 +477,7 @@ function drawOverview(body, st, ctx) {
           <div class="panel-title"><h2 id="h-duo">Joué avec</h2></div>
           <div id="duos"></div>
         </section>
+        ${adSlot('sidebar', 'rect')}
       </aside>
       <div>
         <section class="panel summary" id="summary" aria-label="Résumé des parties chargées">${loading()}</section>
@@ -440,6 +540,9 @@ function drawOverview(body, st, ctx) {
     body.querySelector('#summary').innerHTML = summaryBlock(sm, games);
     const allGames = gameStats(L.items, s.puuid);
     body.querySelector('#chartBox').innerHTML = chartPanel(s, allGames);
+    const ab = body.querySelector('#allyBox');
+    ab.innerHTML = allyPanel(allGames);
+    ab.hidden = !ab.innerHTML;
     body.querySelector('#iaBox').innerHTML = rankIa(s, allGames);
     body.querySelector('#rcCount').textContent = sm.n ? `${sm.n} parties` : '';
     body.querySelector('#recentChamps').innerHTML = sm.champList.length
@@ -453,7 +556,7 @@ function drawOverview(body, st, ctx) {
       : '<p class="muted small" style="padding:0 16px 16px">Pas encore de parties chargées.</p>';
     body.querySelector('#duos').innerHTML = sm.mateList.length
       ? `<ul class="mini-list">${sm.mateList
-          .map((x) => `<li>${MATE_IC.has(x.puuid) && MATE_IC.get(x.puuid) != null ? profileImg(MATE_IC.get(x.puuid), 34, true) : `<span class="mate-ic skel" data-mate="${esc(x.puuid)}"></span>`}<div class="nm"><a href="${playerHref(s.platform, x.name, x.tag)}">${esc(x.name)}</a><div class="sub">#${esc(x.tag)}</div></div><div class="val"><b>${x.w}V ${x.n - x.w}D</b><div class="sub">${pct(x.w, x.n)}</div></div>${levelRing(x.sc / x.n, { size: 'sm', avatar: true })}</li>`)
+          .map((x) => `<li>${MATE_IC.has(x.puuid) && MATE_IC.get(x.puuid) != null ? profileImg(MATE_IC.get(x.puuid), 34, true) : `<span class="mate-ic skel" data-mate="${esc(x.puuid)}"></span>`}<div class="nm"><a href="${playerHref(s.platform, x.name, x.tag)}">${esc(x.name)}</a><div class="sub">#${esc(x.tag)}</div></div><div class="val"><b>${x.w}V ${x.n - x.w}D</b><div class="sub">${pct(x.w, x.n)}</div></div>${levelRing(allyLevel(x.sc / x.n), { size: 'sm', avatar: true })}</li>`)
           .join('')}</ul>`
       : '<p class="muted small" style="padding:0 16px 16px">Aucun joueur croisé au moins deux fois dans les parties chargées.</p>';
     const missing = sm.mateList.filter((x) => !MATE_IC.has(x.puuid));

@@ -41,7 +41,7 @@ function results(q, region, remote = []) {
         return { c, score };
       })
       .filter((x) => x.score >= 0)
-      .sort((a, b) => a.score - b.score || a.c.name.localeCompare(b.c.name, 'fr'))
+      .sort((a, b) => a.score - b.score || a.c.name.localeCompare(b.c.name, LOC))
       .slice(0, typedId ? 3 : 6);
     for (const { c } of champs) out.push({ type: 'champ', c });
     people.filter((x) => norm(x.name).includes(n)).slice(0, 4).forEach(addPerson);

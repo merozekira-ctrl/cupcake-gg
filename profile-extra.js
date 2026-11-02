@@ -1,5 +1,5 @@
 // Profil : score cupcake, jauge, graphiques, rank IA, regroupement par jour, champions mis en avant.
-import { esc, num, dec, pct, kdaRatio, kdaText, champImg, champOf, champHref, isArena, scoreMatch, crest, rankText, wrBadge, wrTier, levelRing, TIERS } from '../core.js';
+import { esc, num, dec, pct, kdaRatio, kdaText, champImg, champOf, champHref, isArena, scoreMatch, crest, rankText, wrBadge, wrTier, levelRing, allyLevel, TIERS } from '../core.js';
 
 /* ---------- Statistiques par partie ---------- */
 
@@ -36,14 +36,23 @@ export function gameStats(items, puuid) {
 
 export function gauge(w, n) {
   const p = n ? w / n : 0;
-  const len = Math.PI * 40;
+  // Deux arcs séparés par un petit espace : victoires (clair) puis défaites (rouge), extrémités arrondies.
+  const pt = (t) => {
+    const a = Math.PI * (1 - t);
+    return `${(50 + 40 * Math.cos(a)).toFixed(2)} ${(50 - 40 * Math.sin(a)).toFixed(2)}`;
+  };
+  const arc = (t0, t1) => (t1 - t0 > 0.002 ? `M${pt(t0)} A40 40 0 0 1 ${pt(t1)}` : '');
+  const gap = p > 0.02 && p < 0.98 ? 0.025 : 0;
+  const winD = arc(0, Math.max(0, p - gap / 2));
+  const lossD = arc(Math.min(1, p + gap / 2), 1);
   return `<div class="gauge" role="img" aria-label="${pct(w, n)} de victoires">
     <svg viewBox="0 0 100 58" aria-hidden="true">
-      <defs><linearGradient id="gg" x1="0" x2="1"><stop offset="0" stop-color="var(--g1)"/><stop offset="1" stop-color="var(--g2)"/></linearGradient></defs>
-      <path d="M10 50a40 40 0 0 1 80 0" fill="none" stroke="var(--loss)" stroke-opacity=".85" stroke-width="9" stroke-linecap="round"/>
-      <path d="M10 50a40 40 0 0 1 80 0" fill="none" stroke="url(#gg)" stroke-width="9" stroke-linecap="round" stroke-dasharray="${(p * len).toFixed(1)} ${len.toFixed(1)}" class="gauge-fill"/>
+      ${n ? '' : `<path d="${arc(0, 1)}" class="g-track"/>`}
+      ${lossD ? `<path d="${lossD}" class="g-loss"/>` : ''}
+      ${winD ? `<path d="${winD}" class="g-win"/>` : ''}
+      <text x="50" y="41" text-anchor="middle" class="g-pct">${n ? Math.round(p * 100) + (document.documentElement.lang === 'en' ? '%' : ' %') : '–'}</text>
+      <text x="50" y="52" text-anchor="middle" class="g-lbl">WINRATE</text>
     </svg>
-    <b>${n ? Math.round(p * 100) + ' %' : '–'}</b><small>winrate</small>
     <span class="gauge-wl"><span class="good">${w} V</span> – <span class="bad">${n - w} D</span></span>
   </div>`;
 }
@@ -84,7 +93,7 @@ export function chartPanel(sum, games) {
           <path d="${linePath(pts)}" fill="none" stroke="var(--c1)" stroke-width="2.4" vector-effect="non-scaling-stroke"/>
         </svg>
       </div>
-      <div class="chart-foot"><span>Pic <b>${esc(valueLabel(peak.v))}</b></span><span>Suivi depuis <b>${new Date(first.t).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</b></span></div>`;
+      <div class="chart-foot"><span>Pic <b>${esc(valueLabel(peak.v))}</b></span><span>Suivi depuis <b>${new Date(first.t).toLocaleDateString(LOC, { day: 'numeric', month: 'short' })}</b></span></div>`;
   }
   const g = [...games].reverse().slice(-20);
   if (g.length < 2) {
@@ -135,7 +144,7 @@ export function rankIa(sum, games) {
   // Indice entre -1 et 1 : 45 % place dans la partie, 25 % score, 20 % winrate, 10 % KDA.
   const z =
     0.45 * ((5.5 - avgPlace) / 4.5) +
-    0.25 * ((avgScore - 45) / 35) +
+    0.25 * ((avgScore - 54) / 30) +
     0.2 * ((wr - 0.5) * 3) +
     0.1 * Math.max(-1, Math.min(1, (Math.min(kda, 8) - 3) / 3));
   const conf = Math.min(1, n / 20);
@@ -149,7 +158,7 @@ export function rankIa(sum, games) {
   const pctz = Math.round(((z + 1) / 2) * 100);
   const facts = [
     [`Place moyenne dans la partie`, `${dec(avgPlace, 1)}/10`, avgPlace <= 4.5],
-    [`Score cupcake moyen`, `${Math.round(avgScore)}/100`, avgScore >= 55],
+    [`Score cupcake moyen`, `${Math.round(avgScore)}/100`, avgScore >= 60],
     [`Winrate`, pct(wr, 1), wr >= 0.5],
     [`KDA`, kdaText(kda), kda >= 3],
   ];
@@ -161,7 +170,7 @@ export function rankIa(sum, games) {
         <div>${crest(estRank, 'md')}<small>Mérité</small><b>${esc(rankText(estRank))}</b></div>
       </div>
       <p class="ia-verdict">Selon ses stats, ce joueur <b>${verdict}</b>${delta ? ` (${delta > 0 ? '+' : ''}${delta} division${Math.abs(delta) > 1 ? 's' : ''})` : ''}.</p>
-      <div class="ia-meter" aria-hidden="true"><i style="left:${pctz}%"></i></div>
+      <div class="ia-meter" aria-hidden="true"><b class="ia-fill ${pctz >= 50 ? 'up' : 'down'}" style="left:${Math.min(50, pctz)}%;width:${Math.abs(pctz - 50)}%"></b><i style="left:${pctz}%"></i></div>
       <ul class="ia-facts">${facts.map(([l, v, ok]) => `<li><span>${l}</span><b class="${ok ? 'good' : 'bad'}">${v}</b></li>`).join('')}</ul>
     </div>`;
 }
@@ -182,18 +191,6 @@ export function summaryBlock(sm, games) {
   const mvp = games.filter((x) => x.mvp).length;
   const ace = games.filter((x) => x.ace).length;
   const kda = kdaRatio(k, d, a);
-  // Niveau moyen des alliés sur les 10 dernières parties (score cupcake de chaque coéquipier).
-  let allySum = 0;
-  let allyN = 0;
-  for (const g of games.slice(0, 10)) {
-    const sc = scoreMatch(g.m);
-    g.m.parts.forEach((p, i) => {
-      if (p === g.me || (g.arena ? p.sub !== g.me.sub : p.team !== g.me.team)) return;
-      allySum += sc.scores[i] * 10;
-      allyN++;
-    });
-  }
-  const allies = allyN ? allySum / allyN : null;
   return `
     <div class="st st-wr"><div class="sum-label">Victoires · ${n} parties</div>${gauge(w, n)}</div>
     <div class="st st-ch"><div class="sum-label">Champions les plus joués</div>
@@ -221,8 +218,7 @@ export function summaryBlock(sm, games) {
       <small class="st-hint">rang moyen parmi les 10 joueurs</small>
       <span class="row" style="gap:5px">${mvp ? `<span class="badge gold">MVP ×${mvp}</span>` : ''}${ace ? `<span class="badge ace">ACE ×${ace}</span>` : ''}</span>
     </div>
-    <div class="st st-score"><div class="sum-label">Score cupcake</div>${scoreBig(score)}<small class="st-hint">performance sur 100 (KDA, dégâts, or, vision…)</small></div>
-    ${allies == null ? '' : `<div class="st st-allies"><div class="sum-label">Niveau des alliés</div>${levelRing(allies, { size: 'lg', avatar: true })}<small class="st-hint">sur les ${Math.min(10, games.length)} dernières parties</small></div>`}`;
+    <div class="st st-score"><div class="sum-label">Score cupcake</div>${scoreBig(score)}<small class="st-hint">performance sur 100 (KDA, dégâts, or, vision…)</small></div>`;
 }
 const scoreBig = (v) => `<span class="score score-lg${v >= 80 ? ' s-hi' : ''}" style="--p:${v};--c:${v >= 60 ? 'var(--wr4)' : v >= 45 ? 'var(--wr3)' : v >= 30 ? 'var(--wr1)' : 'var(--wr0)'}"><b>${v}</b></span>`;
 
@@ -234,7 +230,7 @@ export function dayHeader(list, puuid) {
   const w = games.filter((x) => x.win).length;
   const l = games.length - w;
   const score = games.length ? Math.round(games.reduce((s, x) => s + x.score, 0) / games.length) : null;
-  const date = new Date(list[0].start).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'short' });
+  const date = new Date(list[0].start).toLocaleDateString(LOC, { weekday: 'long', day: 'numeric', month: 'short' });
   return `<div class="day-head"><b>${esc(date)}</b><span class="grow"></span>${score != null ? `<span class="day-score">Score cupcake : <b>${score}</b></span>` : ''}${w ? `<span class="day-w">${w} victoire${w > 1 ? 's' : ''}</span>` : ''}${l ? `<span class="day-l">${l} défaite${l > 1 ? 's' : ''}</span>` : ''}</div>`;
 }
 export function groupByDay(items) {
@@ -296,4 +292,23 @@ export function champHighlights(items, puuid, mastery) {
       return `<a class="chh chh-${k}" href="${c ? champHref(c) : '#/champions'}"><span><small>${label}</small><b>${esc(big)}</b><span>${esc(sub)}</span></span>${champImg(id, 64)}</a>`;
     })
     .join('')}</div>`;
+}
+
+/* ---------- Niveau des alliés (panneau de la colonne de gauche) ---------- */
+export function allyPanel(games) {
+  // Niveau moyen des alliés sur les 10 dernières parties (score cupcake de chaque coéquipier).
+  let allySum = 0;
+  let allyN = 0;
+  for (const g of games.slice(0, 10)) {
+    const sc = scoreMatch(g.m);
+    g.m.parts.forEach((p, i) => {
+      if (p === g.me || (g.arena ? p.sub !== g.me.sub : p.team !== g.me.team)) return;
+      allySum += sc.scores[i] * 10;
+      allyN++;
+    });
+  }
+  const allies = allyN ? allySum / allyN : null;
+  if (allies == null) return '';
+  return `<div class="panel-title"><h2>Niveau des alliés</h2><span class="muted small">${Math.min(10, games.length)} dernières parties</span></div>
+    <div class="ally-in">${levelRing(allyLevel(allies), { size: 'lg', avatar: true })}<p class="muted small">Niveau moyen de tes coéquipiers selon leurs stats, de 0 % Déchu à 100 % GOAT.</p></div>`;
 }

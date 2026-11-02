@@ -67,7 +67,7 @@ function itemCatalog() {
     else if (it.from.length) groups.epic.push(id);
     else groups.basic.push(id);
   }
-  const byGold = (a, b) => items[a].gold - items[b].gold || items[a].name.localeCompare(items[b].name, 'fr');
+  const byGold = (a, b) => items[a].gold - items[b].gold || items[a].name.localeCompare(items[b].name, LOC);
   Object.values(groups).forEach((g) => g.sort(byGold));
   return [
     ['Objets légendaires', groups.legend],
@@ -178,7 +178,7 @@ const MODE_NAMES = { CLASSIC: 'Faille de l’invocateur', ARAM: 'ARAM', CHERRY: 
 function drawSpells(body) {
   const list = Object.values(S.st.spells)
     .filter((s) => s.modes.includes('CLASSIC') || s.modes.includes('ARAM'))
-    .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name, 'fr'));
+    .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name, LOC));
   body.innerHTML = `<div class="spell-grid">${list
     .map(
       (s) => `<article class="panel spell-card">

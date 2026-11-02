@@ -11,6 +11,8 @@ import * as Wiki from './views/wiki.js';
 import * as Otp from './views/otp.js';
 import * as Matchups from './views/matchups.js';
 import * as Patch from './views/patch.js';
+import * as Legal from './views/legal.js';
+import { adSlot, startAds } from './ads.js';
 
 const view = document.getElementById('view');
 let cleanup = null;
@@ -197,6 +199,13 @@ async function router() {
   setDd(false);
   if (dialog.open) dialog.close();
 
+  // Bandeau publicitaire de bas de page : renouvelé seulement quand la page change
+  // (pas sur un simple changement d'onglet), absent de la page de confidentialité.
+  if (changed) {
+    const ab = document.getElementById('adBottom');
+    if (ab) ab.innerHTML = page === 'confidentialite' || page === 'privacy' ? '' : adSlot('banner');
+  }
+
   try {
     switch (page) {
       case '':
@@ -229,6 +238,10 @@ async function router() {
       case 'wiki':
         cleanup = await Wiki.render(view, { tab: segs[1] || 'objets' }, ctx);
         break;
+      case 'confidentialite':
+      case 'privacy':
+        cleanup = await Legal.render(view, {}, ctx);
+        break;
       default:
         view.innerHTML = `<div class="state"><p class="state-title">Page introuvable</p><p>Cette adresse ne correspond à aucune page du site.</p><a class="btn" href="#/">Retour à l’accueil</a></div>`;
     }
@@ -258,6 +271,7 @@ async function boot() {
     document.getElementById('banner').innerHTML = `<div class="banner"><div class="banner-in" role="status"><strong>Clé API manquante.</strong> Ajoute <code>RIOT_API_KEY=…</code> dans le fichier <code>.env</code>, puis relance le serveur. L’encyclopédie fonctionne sans clé.</div></div>`;
   }
   wireSearch();
+  startAds();
   window.addEventListener('hashchange', router);
   router();
 }

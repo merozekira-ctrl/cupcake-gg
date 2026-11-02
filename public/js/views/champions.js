@@ -5,6 +5,7 @@ import {
   runeImg, abilityImg, passiveImg, splashUrl, loadingUrl, roleIcon, ROLES, ROLE_ORDER, CLASSES, rich, crest, rankText,
   regionOptions, regionBadge, clock, profileImg, setPlatform, setTitle, loading, errorState, store, toast, playerHref, norm, wrBadge, proBadge, roleBar, patchLabel,
 } from '../core.js';
+import { adSlot } from '../ads.js';
 
 const cmpPatch = (a, b) => {
   const [a1, a2] = a.split('.').map(Number);
@@ -1019,7 +1020,7 @@ export async function renderChampion(el, { id }, ctx) {
     });
   if (tab === 'build') {
     body.innerHTML = R
-      ? `${mode === 'sr' && role && role !== 'ALL' ? `<div class="rel-wrap">${relPanel(c, R, role)}<aside class="panel otp-mini-box" id="otpMini"></aside></div>` : ''}${buildTab(c, R, cm, role, mode)}`
+      ? `${mode === 'sr' && role && role !== 'ALL' ? `<div class="rel-wrap">${relPanel(c, R, role)}<aside class="panel otp-mini-box" id="otpMini"></aside></div>${adSlot('incontent')}` : ''}${buildTab(c, R, cm, role, mode)}`
       : noData();
     wireStart();
     const rp = body.querySelector('#relPanel');

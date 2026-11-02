@@ -369,10 +369,28 @@ export function setPlatform(p) {
 }
 
 /* ---------- Score de performance (0 à 10) ---------- */
-// Compare chaque joueur au reste de la partie : KDA, participation, dégâts,
-// or, farm, vision, objectifs et encaissement, pondérés puis ramenés sur 10.
+// Barème équilibré : chaque stat est comparée à la médiane de la partie (pas au meilleur
+// joueur), sur une échelle logarithmique : égal à la médiane = 0,5, le double ≈ 0,85,
+// la moitié ≈ 0,15. Les poids dépendent du rôle (le support est jugé sur la vision,
+// l'utilitaire et la participation ; le jungler sur les objectifs).
+// Repères (simulation de parties classées) : moyenne ≈ 54, victoire ≈ 62, défaite ≈ 47,
+// 10 % des parties au-dessus de 75, environ 2,5 % à 85 ou plus.
 
-const W = { kda: 0.22, kp: 0.16, dmg: 0.15, share: 0.07, gold: 0.1, cs: 0.08, vis: 0.1, obj: 0.06, tank: 0.06 };
+const SCORE_W = {
+  def: { kda: 0.2, kp: 0.17, dmg: 0.15, share: 0.1, gold: 0.08, cs: 0.1, vis: 0.06, obj: 0.07, tank: 0.07 },
+  JUNGLE: { kda: 0.2, kp: 0.2, dmg: 0.11, share: 0.06, gold: 0.08, cs: 0.06, vis: 0.09, obj: 0.14, tank: 0.06 },
+  UTILITY: { kda: 0.22, kp: 0.22, dmg: 0.06, share: 0.02, gold: 0.04, vis: 0.22, obj: 0.02, tank: 0.04, util: 0.16 },
+};
+// Planchers des références : évite qu'une partie où tout le monde joue peu gonfle les scores.
+const SCORE_FLOOR = { kda: 2, dmg: 500, gold: 330, cs: 5, vis: 0.6, obj: 250, tank: 900, util: 120 };
+const clamp01 = (x) => Math.max(0, Math.min(1, x));
+const median = (a) => {
+  const s = a.filter(Number.isFinite).sort((x, y) => x - y);
+  if (!s.length) return 0;
+  const h = s.length >> 1;
+  return s.length % 2 ? s[h] : (s[h - 1] + s[h]) / 2;
+};
+const relTo = (x, ref, floor, k = 0.35) => clamp01(0.5 + k * Math.log2(Math.max(x, 1e-6) / Math.max(ref, floor, 1e-6)));
 
 export function scoreMatch(m) {
   if (m._score) return m._score;
@@ -386,35 +404,59 @@ export function scoreMatch(m) {
     kills[g] = (kills[g] || 0) + p.k;
     dmg[g] = (dmg[g] || 0) + p.dmg;
   }
-  const metrics = m.parts.map((p) => {
+  const met = m.parts.map((p) => {
     const g = groupOf(p);
     return {
-      kda: (p.k + p.a * 0.75) / Math.max(1, p.d),
+      kda: (p.k + p.a * 0.7) / Math.max(1, p.d),
       kp: kills[g] ? (p.k + p.a) / kills[g] : 0,
       dmg: p.dmg / min,
       share: dmg[g] ? p.dmg / dmg[g] : 0,
       gold: p.gold / min,
       cs: p.cs / min,
       vis: p.vis / min,
-      obj: (p.obj + p.bld) / min,
+      obj: (p.obj + p.bld * 0.5) / min,
       tank: (p.taken + p.mitig) / min,
+      util: ((p.heal || 0) + (p.cc || 0) * 4) / min,
     };
   });
-  // Référence = meilleur de la partie, mais jamais sous un plancher absolu :
-  // dans une partie où tout le monde joue mal, personne n'atteint le maximum.
-  const FLOOR = { kda: 5, kp: 0.65, dmg: 900, share: 0.3, gold: 480, cs: 8, vis: 1.6, obj: 400, tank: 1500 };
-  const max = {};
-  for (const k in W) max[k] = Math.max(FLOOR[k] || 1e-9, ...metrics.map((x) => x[k]));
-  const scores = metrics.map((x, i) => {
-    let rel = 0;
-    for (const k in W) rel += W[k] * Math.min(1, x[k] / max[k]);
+  // Références : médiane de la partie ; supports exclus pour le farm, l'or et les dégâts.
+  const carries = met.filter((x, i) => m.parts[i].pos !== 'UTILITY');
+  const pool = carries.length >= 4 ? carries : met;
+  const ref = {
+    kda: median(met.map((x) => x.kda)),
+    dmg: median(pool.map((x) => x.dmg)),
+    gold: median(pool.map((x) => x.gold)),
+    cs: median(pool.map((x) => x.cs)),
+    vis: median(met.map((x) => x.vis)),
+    obj: median(met.map((x) => x.obj)),
+    tank: median(met.map((x) => x.tank)),
+    util: median(met.map((x) => x.util)),
+  };
+  const F = SCORE_FLOOR;
+  const scores = met.map((x, i) => {
     const p = m.parts[i];
-    // Barème exigeant : 0,24 de « relatif » = 0, 0,86 = 100. Une partie moyenne tourne autour de 45-50.
-    let v = (rel - 0.24) / 0.62;
-    // Morts : au-delà de 5, chaque mort coûte 3 points (15 max).
-    if (!arena) v -= Math.min(0.15, Math.max(0, p.d - 5) * 0.03);
-    v += arena ? (p.place && p.place <= 2 ? 0.04 : 0) : p.win ? 0.04 : 0;
-    return Math.max(0, Math.min(10, v * 10));
+    const sup = p.pos === 'UTILITY';
+    const W = SCORE_W[p.pos] || SCORE_W.def;
+    const c = {
+      kda: relTo(x.kda, ref.kda, F.kda, 0.28),
+      kp: clamp01(0.5 + (x.kp - 0.5) * 1.4),
+      dmg: relTo(x.dmg, sup ? ref.dmg * 0.5 : ref.dmg, F.dmg * (sup ? 0.5 : 1)),
+      share: relTo(x.share, sup ? 0.1 : 0.225, 0.05),
+      gold: relTo(x.gold, sup ? ref.gold * 0.7 : ref.gold, F.gold),
+      cs: relTo(x.cs, p.pos === 'JUNGLE' ? ref.cs * 0.85 : ref.cs, F.cs),
+      vis: relTo(x.vis, sup ? ref.vis * 2 : ref.vis, F.vis),
+      obj: relTo(x.obj, ref.obj, F.obj),
+      tank: relTo(x.tank, ref.tank, F.tank),
+      util: relTo(x.util, Math.max(ref.util, 300), F.util),
+    };
+    let v = 0;
+    for (const k in W) v += W[k] * c[k];
+    // v ≈ 0,5 = partie dans la moyenne de la lobby.
+    let s = 52 + (v - 0.5) * 120;
+    // Grosse série de morts : légère pénalité (1 point par mort au-delà de 8, 5 max).
+    if (!arena) s -= Math.min(5, Math.max(0, p.d - 8));
+    s += arena ? (p.place && p.place <= 2 ? 5 : 0) : p.win ? 5 : 0;
+    return Math.max(0, Math.min(100, s)) / 10;
   });
   const order = scores.map((s, i) => i).sort((a, b) => scores[b] - scores[a]);
   const rank = [];
@@ -523,7 +565,7 @@ export function levelAvatar(step, size = 48) {
   </svg>`;
 }
 
-// Niveau des alliés : comparé à un coéquipier moyen (score moyen ≈ 48 → 50 % « Humain »).
-// Un allié à 60 de score moyen donne ~75 %, à 30 ~28 %.
-export const ALLY_AVG = 48;
+// Niveau des alliés : comparé à un coéquipier moyen (score moyen ≈ 54 → 50 % « Humain »).
+// Un allié à 66 de score moyen donne ~70 %, à 36 ~21 %.
+export const ALLY_AVG = 54;
 export const allyLevel = (avgScore) => Math.max(0, Math.min(100, 50 + (avgScore - ALLY_AVG) * 1.6));

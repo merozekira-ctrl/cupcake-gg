@@ -7,6 +7,7 @@ import {
 import { matchCard, bindMatchList, resultOf } from './match.js';
 import { gameStats, chartPanel, rankIa, summaryBlock, allyPanel, dayHeader, groupByDay, champHighlights } from './profile-extra.js';
 import { roleBar, scoreMatch, levelRing, allyLevel } from '../core.js';
+import { adSlot } from '../ads.js';
 
 const cache = new Map();
 const MATE_IC = new Map();
@@ -144,6 +145,7 @@ function draw(el, st, tab, ctx) {
   else drawOverview(body, st, ctx);
   if (tab !== 'direct') checkLive(el, st, ctx);
   loadSeason(el, st, ctx);
+  estimatePeak(el, st, ctx).catch(() => {});
 }
 
 /* ---------- Peak et saisons ---------- */
@@ -153,7 +155,66 @@ const rankLine = (r) => (r ? `${esc(rankText(r))} · ${num(r.lp)} LP` : '–');
 function peakPill(s) {
   const p = s.peak;
   if (!p) return '';
-  return `<a class="peak-pill" href="${playerHref(s.platform, s.name, s.tag, 'saisons')}" title="Rang le plus haut atteint cette saison">${crest(p, 'xs')}<span><small>Peak</small><b>${rankLine(p)}</b></span><em>${p.q === 'flex' ? 'Flex · ' : ''}Saison ${esc(p.season)}</em></a>`;
+  const title = p.est ? 'Rang le plus haut de la saison, estimé en remontant les dernières parties Solo/Duo depuis le rang actuel (environ 20 LP par partie)' : 'Rang le plus haut atteint cette saison';
+  return `<a class="peak-pill" href="${playerHref(s.platform, s.name, s.tag, 'saisons')}" title="${title}">${crest(p, 'xs')}<span><small>Peak${p.est ? ' estimé' : ''}</small><b>${p.est ? '≈ ' : ''}${rankLine(p)}</b></span><em>${p.q === 'flex' ? 'Flex · ' : ''}Saison ${esc(p.season)}</em></a>`;
+}
+
+/* ---------- Peak estimé ----------
+   cupcake.gg n'enregistre un rang que lorsqu'il voit le joueur : un joueur monté à
+   Master 800 LP puis redescendu à 600 LP avant sa première visite aurait un peak de 600.
+   On remonte donc ses dernières parties Solo/Duo de la saison depuis le rang actuel
+   (victoire = environ +20 LP, défaite = environ -20 LP) : le point le plus haut de ce
+   parcours devient le peak affiché (marqué « estimé ») s'il dépasse le peak enregistré. */
+const PK_TIERS = ['IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'EMERALD', 'DIAMOND', 'MASTER', 'GRANDMASTER', 'CHALLENGER'];
+const PK_DIVS = ['IV', 'III', 'II', 'I'];
+const PK_STEP = 20;
+function pkValue(r) {
+  const t = PK_TIERS.indexOf(r?.tier);
+  if (t < 0) return null;
+  return t >= 7 ? 2800 + (r.lp || 0) : t * 400 + Math.max(0, PK_DIVS.indexOf(r.rank)) * 100 + (r.lp || 0);
+}
+function pkRank(v, cur) {
+  // Au-dessus de Diamant I : les LP sont continus entre Master, Grand Maître et Challenger.
+  if (v >= 2800) return { tier: PK_TIERS.indexOf(cur.tier) >= 7 ? cur.tier : 'MASTER', rank: 'I', lp: v - 2800 };
+  const t = Math.floor(v / 400);
+  return { tier: PK_TIERS[t], rank: PK_DIVS[Math.floor((v % 400) / 100)], lp: v % 100 };
+}
+async function estimatePeak(el, st, ctx) {
+  const s = st.sum;
+  const cur = s.ranked?.solo;
+  const now = pkValue(cur);
+  if (now == null || !s.seasonStart) return;
+  if (!st.lists.solo) {
+    try {
+      st.lists.solo = await fetchPage(st, 'solo', 0, false, 20);
+    } catch {
+      return;
+    }
+  }
+  if (!ctx.alive()) return;
+  // Parties de la saison, de la plus récente à la plus ancienne. Une partie finie après
+  // la lecture du rang n'est peut-être pas encore comptée dans les LP : on l'ignore.
+  const games = st.lists.solo.items
+    .filter((m) => m.q === 420 && !m.remake && m.start >= s.seasonStart && m.end < st.at - 60e3)
+    .sort((a, b) => b.start - a.start);
+  let v = now;
+  let best = now;
+  let at = null;
+  for (const m of games) {
+    const me = m.parts.find((p) => p.puuid === s.puuid);
+    if (!me) continue;
+    v += me.win ? -PK_STEP : PK_STEP;
+    if (v > best) {
+      best = v;
+      at = m.start;
+    }
+  }
+  if (at == null || best <= (s.peak?.v ?? -1)) return;
+  s.peak = { ...pkRank(best, cur), v: best, t: at, q: 'solo', season: s.current, est: true };
+  const pill = el.querySelector('.peak-pill');
+  if (pill) pill.outerHTML = peakPill(s);
+  else el.querySelector('.p-meta')?.insertAdjacentHTML('afterend', peakPill(s));
+  if (el.querySelector('.seasons')) drawSeasons(el.querySelector('#tabBody'), st);
 }
 function seasonCell(box, label) {
   if (!box) return `<div class="ss-q ss-empty"><small>${label}</small><span class="muted">Aucune donnée</span></div>`;
@@ -170,7 +231,7 @@ function drawSeasons(body, st) {
   const s = st.sum;
   const list = s.seasons || [];
   body.innerHTML = `<section class="panel seasons">
-    <div class="panel-title"><h2>Saisons</h2>${s.peak ? `<span class="muted small">Peak : ${rankLine(s.peak)} (saison ${esc(s.peak.season)})</span>` : ''}</div>
+    <div class="panel-title"><h2>Saisons</h2>${s.peak ? `<span class="muted small">Peak${s.peak.est ? ' estimé' : ''} : ${s.peak.est ? '≈ ' : ''}${rankLine(s.peak)} (saison ${esc(s.peak.season)})</span>` : ''}</div>
     ${list.length
       ? `<div class="ss-list">${list
           .map((x) => `<article class="ss-card${x.season === s.current ? ' cur' : ''}"><header><b>Saison ${esc(x.season)}</b>${x.season === s.current ? '<span class="ss-now">en cours</span>' : ''}</header><div class="ss-grid">${seasonCell(x.solo, 'Classée Solo/Duo')}${seasonCell(x.flex, 'Classée Flex')}</div></article>`)
@@ -269,9 +330,9 @@ function checkLive(el, st, ctx) {
 
 /* ---------- Chargement des parties ---------- */
 
-async function fetchPage(st, f, start, force) {
+async function fetchPage(st, f, start, force, count = 10) {
   const qs = FILTERS.find(([id]) => id === f)[2];
-  const r = await api(`/matches/${st.sum.platform}/${st.sum.puuid}?start=${start}&count=10${qs}${force ? '&force=1' : ''}`);
+  const r = await api(`/matches/${st.sum.platform}/${st.sum.puuid}?start=${start}&count=${count}${qs}${force ? '&force=1' : ''}`);
   const prev = start ? st.lists[f]?.items || [] : [];
   return { items: [...prev, ...r.matches], more: r.more, busy: false, error: null };
 }
@@ -416,6 +477,7 @@ function drawOverview(body, st, ctx) {
           <div class="panel-title"><h2 id="h-duo">Joué avec</h2></div>
           <div id="duos"></div>
         </section>
+        ${adSlot('sidebar', 'rect')}
       </aside>
       <div>
         <section class="panel summary" id="summary" aria-label="Résumé des parties chargées">${loading()}</section>

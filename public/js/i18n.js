@@ -4,6 +4,10 @@
 
 const PHRASES = {
   // ---------- Navigation, en-tête, pied de page ----------
+  'Confidentialité': 'Privacy',
+  'Peak estimé': 'Estimated peak',
+  'Gérer les cookies': 'Cookie settings',
+  'Informations': 'Information',
   'Aller au contenu': 'Skip to content',
   'Navigation principale': 'Main navigation',
   'cupcake.gg, accueil': 'cupcake.gg, home',
@@ -633,6 +637,8 @@ const PHRASES = {
   'Dernier rang connu': 'Last known rank',
   'en cours': 'ongoing',
   'Peak :': 'Peak:',
+  'Peak estimé :': 'Estimated peak:',
+  'Rang le plus haut de la saison, estimé en remontant les dernières parties Solo/Duo depuis le rang actuel (environ 20 LP par partie)': 'Highest rank this season, estimated by tracing recent Solo/Duo games back from the current rank (about 20 LP per game)',
   'Meilleur rang Solo/Duo enregistré': 'Best recorded Solo/Duo rank',
   'Aucun rang enregistré pour ce joueur.': 'No rank recorded for this player.',
   'saison': 'season',

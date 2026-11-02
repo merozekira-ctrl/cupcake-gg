@@ -808,7 +808,9 @@ function seasonsView(P, history = [], ranked = {}) {
   let peak = null;
   for (const c of cands) if (c.v != null && (!peak || c.v > peak.v)) peak = c;
   if (peak) peak = { ...peak, season: current };
-  return { seasons, peak, current };
+  const [, mm, dd] = SEASON_START.split('-').map(Number);
+  const seasonStart = Date.UTC(Number(current), (mm || 1) - 1, dd || 8);
+  return { seasons, peak, current, seasonStart };
 }
 
 async function getSummoner(platform, name, tag, force) {
@@ -3008,7 +3010,7 @@ const routes = [];
 const route = (method, re, fn) => routes.push({ method, re, fn });
 const P = '([a-z0-9]+)';
 
-route('GET', /^\/api\/config$/, () => ({ platforms: PLATFORMS, hasKey: !!KEY, demo: DEMO_ON, proWiki: PRO_WIKI_API.replace(/api\.php.*$/, ''), defaultPlatform: PLATFORMS[DEFAULT_PLATFORM] ? DEFAULT_PLATFORM : 'euw1' }));
+route('GET', /^\/api\/config$/, () => ({ platforms: PLATFORMS, hasKey: !!KEY, demo: DEMO_ON, proWiki: PRO_WIKI_API.replace(/api\.php.*$/, ''), ads: ADS, contact: process.env.CONTACT_EMAIL || '', defaultPlatform: PLATFORMS[DEFAULT_PLATFORM] ? DEFAULT_PLATFORM : 'euw1' }));
 route('GET', /^\/api\/static$/, (m, q) => getStatic(q.lang).catch((e) => (langOf(q.lang) !== LANG ? getStatic(LANG) : Promise.reject(e))));
 route('GET', /^\/api\/champion\/([A-Za-z0-9]+)$/, (m, q) => getChampion(m[1], q.lang).catch((e) => (langOf(q.lang) !== LANG && !(e instanceof ApiError && e.status === 400) ? getChampion(m[1]) : Promise.reject(e))));
 route('GET', new RegExp(`^/api/summoner/${P}/([^/]+)/([^/]+)$`), (m, q) => getSummoner(plat(m[1]), dec(m[2]), dec(m[3]), q.force === '1'));
@@ -3114,6 +3116,29 @@ const MIME = {
   '.txt': 'text/plain; charset=utf-8',
 };
 
+/* ---------- Publicité (Google AdSense) ----------
+   Désactivée tant que ADSENSE_CLIENT n'est pas renseigné : aucune requête vers Google,
+   CSP stricte. Une fois activée : /ads.txt servi, CSP élargie avec nonce, emplacements visibles. */
+const ADS_CLIENT = /^ca-pub-\d{10,20}$/.test(String(process.env.ADSENSE_CLIENT || '').trim()) ? String(process.env.ADSENSE_CLIENT).trim() : '';
+const ADS_SLOT_RE = /^\d{6,14}$/;
+const ADS = ADS_CLIENT
+  ? {
+      client: ADS_CLIENT,
+      test: process.env.ADSENSE_TEST === '1',
+      slots: Object.fromEntries(
+        [
+          ['banner', process.env.ADSENSE_SLOT_BANNER],
+          ['sidebar', process.env.ADSENSE_SLOT_SIDEBAR],
+          ['incontent', process.env.ADSENSE_SLOT_INCONTENT],
+        ].filter(([, v]) => ADS_SLOT_RE.test(String(v || '').trim())).map(([k, v]) => [k, String(v).trim()])
+      ),
+    }
+  : null;
+if (process.env.ADSENSE_CLIENT && !ADS_CLIENT) console.warn('ADSENSE_CLIENT invalide (attendu : ca-pub-XXXXXXXXXXXXXXXX) : publicité désactivée.');
+const ADS_TXT = ADS_CLIENT
+  ? [`google.com, ${ADS_CLIENT.replace(/^ca-/, '')}, DIRECT, f08c47fec0942fa0`, ...String(process.env.ADS_TXT_EXTRA || '').split(/\\n|\n/).map((l) => l.trim()).filter(Boolean)].join('\n') + '\n'
+  : '';
+
 const IMG_SRC = ['https://ddragon.leagueoflegends.com', DDRAGON].filter((v, i, a) => a.indexOf(v) === i).join(' ');
 const CSP = [
   "default-src 'self'",
@@ -3125,6 +3150,22 @@ const CSP = [
   "base-uri 'none'",
   "frame-ancestors 'none'",
 ].join('; ');
+// CSP avec publicité : les scripts du site portent un nonce, et 'strict-dynamic' laisse
+// le script AdSense (ajouté par notre code) charger ses propres ressources.
+// 'unsafe-inline' et https: ne servent qu'aux vieux navigateurs (ignorés si nonce + strict-dynamic).
+const cspAds = (nonce) =>
+  [
+    "default-src 'self'",
+    `img-src 'self' data: https: ${IMG_SRC}`,
+    "style-src 'self' 'unsafe-inline'",
+    "font-src 'self' https://fonts.gstatic.com",
+    `script-src 'nonce-${nonce}' 'strict-dynamic' 'unsafe-inline' 'unsafe-eval' https:`,
+    "connect-src 'self' https:",
+    'frame-src https:',
+    "object-src 'none'",
+    "base-uri 'none'",
+    "frame-ancestors 'none'",
+  ].join('; ');
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -3192,7 +3233,21 @@ async function serveStatic(req, res, pathname) {
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'no-referrer',
   };
-  if (ext === '.html') headers['Content-Security-Policy'] = CSP;
+  if (ext === '.html') {
+    if (ADS) {
+      const nonce = crypto.randomBytes(16).toString('base64');
+      data = Buffer.from(
+        data
+          .toString('utf8')
+          .replace(/<script(?=[\s>])/g, `<script nonce="${nonce}"`)
+          // Balise de validation du site dans AdSense (méthode « balise meta »).
+          .replace('</head>', `  <meta name="google-adsense-account" content="${ADS.client}">\n</head>`)
+      );
+      headers['Content-Security-Policy'] = cspAds(nonce);
+      // Les annonces ont besoin de connaître la page qui les affiche.
+      headers['Referrer-Policy'] = 'strict-origin-when-cross-origin';
+    } else headers['Content-Security-Policy'] = CSP;
+  }
   if (/\bgzip\b/.test(req.headers['accept-encoding'] || '') && /\.(html|css|js|json|svg)$/.test(ext)) {
     data = zlib.gzipSync(data);
     headers['Content-Encoding'] = 'gzip';
@@ -3204,6 +3259,14 @@ async function serveStatic(req, res, pathname) {
 const server = http.createServer(async (req, res) => {
   // « //riot.txt » serait lu comme un nom d'hôte : on fusionne les barres obliques en tête.
   const url = new URL(req.url.replace(/^\/+/, '/'), 'http://localhost');
+  if (url.pathname === '/ads.txt') {
+    if (!ADS_TXT) {
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      return res.end('Introuvable');
+    }
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600' });
+    return res.end(req.method === 'HEAD' ? undefined : ADS_TXT);
+  }
   if (url.pathname.startsWith('/api/')) {
     const r = routes.find((x) => x.method === req.method && x.re.test(url.pathname));
     if (!r) return sendJson(req, res, 404, { error: 'Route inconnue.' });
@@ -3271,7 +3334,7 @@ function scheduleAutoMeta() {
 // enregistrés même pour les joueurs que personne n'a consultés. 6 requêtes par région et par relevé.
 function scheduleRankSnapshots() {
   if (!KEY) return;
-  const hours = Number(process.env.RANK_SNAPSHOT_HOURS ?? 6);
+  const hours = Number(process.env.RANK_SNAPSHOT_HOURS ?? 2);
   if (!hours) return;
   const plats = String(process.env.RANK_SNAPSHOT_PLATFORMS || DEFAULT_PLATFORM)
     .split(',')
